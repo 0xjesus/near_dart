@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:test/test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:near_flutter/near_flutter.dart';
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
+import 'package:near_dart/near_dart.dart';
 
 void main() {
   group('NearRpcClient', () {

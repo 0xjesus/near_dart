@@ -1,8 +1,8 @@
-# near_flutter
+# near_dart
 
 Complete NEAR Protocol SDK for Flutter/Dart.
 
-[![pub package](https://img.shields.io/pub/v/near_flutter.svg)](https://pub.dev/packages/near_flutter)
+[![pub package](https://img.shields.io/pub/v/near_dart.svg)](https://pub.dev/packages/near_dart)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A type-safe, platform-agnostic SDK for building NEAR Protocol applications with Flutter and Dart. Works on iOS, Android, Web, and Desktop.
@@ -19,13 +19,13 @@ A type-safe, platform-agnostic SDK for building NEAR Protocol applications with 
 
 ```yaml
 dependencies:
-  near_flutter: ^0.1.0
+  near_dart: ^0.1.0
 ```
 
 ## Quick Start
 
 ```dart
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
 
 void main() async {
   // Create client (mainnet or testnet)
@@ -239,6 +239,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Links
 
-- [pub.dev](https://pub.dev/packages/near_flutter)
-- [GitHub](https://github.com/0xjesus/near_flutter)
+- [pub.dev](https://pub.dev/packages/near_dart)
+- [GitHub](https://github.com/0xjesus/near_dart)
 - [NEAR Protocol](https://near.org)

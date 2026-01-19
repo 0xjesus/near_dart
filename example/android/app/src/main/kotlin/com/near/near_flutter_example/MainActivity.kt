@@ -1,4 +1,4 @@
-package com.near.near_flutter_example
+package com.near.near_dart_example
 
 import io.flutter.embedding.android.FlutterActivity
 

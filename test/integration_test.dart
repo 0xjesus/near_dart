@@ -9,7 +9,7 @@
 library;
 
 import 'package:test/test.dart';
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
 
 void main() {
   late NearRpcClient client;

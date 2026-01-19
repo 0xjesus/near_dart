@@ -11,7 +11,7 @@
 /// ## Quick Start
 ///
 /// ```dart
-/// import 'package:near_flutter/near_flutter.dart';
+/// import 'package:near_dart/near_dart.dart';
 ///
 /// void main() async {
 ///   // Create client
@@ -30,7 +30,7 @@
 ///   client.close();
 /// }
 /// ```
-library near_flutter;
+library near_dart;
 
 // Types
 export 'src/types/primitives.dart';

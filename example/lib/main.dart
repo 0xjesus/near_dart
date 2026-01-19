@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
 
 void main() {
   runApp(const NearFlutterExampleApp());

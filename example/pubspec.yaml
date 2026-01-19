@@ -1,4 +1,4 @@
-name: near_flutter_example
+name: near_dart_example
 description: Example Flutter app demonstrating NEAR Protocol integration.
 publish_to: 'none'
 version: 0.1.0
@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  near_flutter:
+  near_dart:
     path: ../
 
 dev_dependencies:

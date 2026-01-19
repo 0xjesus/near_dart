@@ -1,6 +1,6 @@
 {
-    "name": "near_flutter_example",
-    "short_name": "near_flutter_example",
+    "name": "near_dart_example",
+    "short_name": "near_dart_example",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

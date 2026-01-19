@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
 
-import 'package:near_flutter/src/wallet/execution_outcome.dart';
-import 'package:near_flutter/src/wallet/transaction.dart';
-import 'package:near_flutter/src/wallet/wallet_adapter.dart';
+import 'package:near_dart/src/wallet/execution_outcome.dart';
+import 'package:near_dart/src/wallet/transaction.dart';
+import 'package:near_dart/src/wallet/wallet_adapter.dart';
 
 /// Configuration for WalletConnect adapter.
 class WalletConnectConfig {

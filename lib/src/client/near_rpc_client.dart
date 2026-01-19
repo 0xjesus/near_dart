@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
 
 import 'responses/status_response.dart';
 import 'responses/block_response.dart';

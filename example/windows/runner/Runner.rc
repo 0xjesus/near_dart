@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.near" "\0"
-            VALUE "FileDescription", "near_flutter_example" "\0"
+            VALUE "FileDescription", "near_dart_example" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "near_flutter_example" "\0"
+            VALUE "InternalName", "near_dart_example" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.near. All rights reserved." "\0"
-            VALUE "OriginalFilename", "near_flutter_example.exe" "\0"
-            VALUE "ProductName", "near_flutter_example" "\0"
+            VALUE "OriginalFilename", "near_dart_example.exe" "\0"
+            VALUE "ProductName", "near_dart_example" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

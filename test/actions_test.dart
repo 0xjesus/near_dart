@@ -1,6 +1,6 @@
 import 'package:test/test.dart';
-import 'package:near_flutter/near_flutter.dart';
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
+import 'package:near_dart/near_dart.dart';
 
 void main() {
   group('Action', () {

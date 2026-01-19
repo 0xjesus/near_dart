@@ -1,7 +1,7 @@
 import 'package:test/test.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:near_flutter/near_flutter.dart';
-import 'package:near_flutter/near_flutter.dart';
+import 'package:near_dart/near_dart.dart';
+import 'package:near_dart/near_dart.dart';
 
 class MockWalletAdapter extends Mock implements WalletAdapter {}
 

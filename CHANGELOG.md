@@ -1,6 +1,6 @@
 ## 0.1.0
 
-Initial release of near_flutter SDK.
+Initial release of near_dart SDK.
 
 ### Features
 
