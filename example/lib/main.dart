@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:near_jsonrpc_client/near_jsonrpc_client.dart';
+import 'package:near_flutter/near_flutter.dart';
 
 void main() {
   runApp(const NearFlutterExampleApp());

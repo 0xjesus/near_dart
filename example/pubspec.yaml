@@ -4,13 +4,13 @@ publish_to: 'none'
 version: 0.1.0
 
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.9.0
 
 dependencies:
   flutter:
     sdk: flutter
-  near_jsonrpc_client:
-    path: ../packages/near_jsonrpc_client
+  near_flutter:
+    path: ../
 
 dev_dependencies:
   flutter_test:

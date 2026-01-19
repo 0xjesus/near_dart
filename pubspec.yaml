@@ -1,10 +1,25 @@
-name: near_flutter_workspace
-description: NEAR Protocol Flutter/Dart SDK - RPC Client and Types
+name: near_flutter
+description: Complete NEAR Protocol SDK for Flutter/Dart. RPC client, wallet integration, and type-safe primitives.
+version: 0.1.0
+homepage: https://0xj.dev
+repository: https://github.com/0xjesus/near_flutter
+issue_tracker: https://github.com/0xjesus/near_flutter/issues
+topics:
+  - near
+  - blockchain
+  - web3
+  - crypto
+  - wallet
 
 environment:
   sdk: ^3.9.0
 
-workspace:
-  - packages/near_jsonrpc_types
-  - packages/near_jsonrpc_client
-  - packages/near_wallet_adapter
+dependencies:
+  http: ^1.3.0
+  equatable: ^2.0.7
+  meta: ^1.16.0
+  json_annotation: ^4.9.0
+
+dev_dependencies:
+  test: ^1.25.8
+  mocktail: ^1.0.4

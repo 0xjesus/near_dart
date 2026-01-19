@@ -1,223 +1,244 @@
-# NEAR Flutter SDK
+# near_flutter
 
-Type-safe Dart/Flutter client for NEAR Protocol JSON-RPC API. Platform agnostic - works on Mobile, Desktop, and Web.
+Complete NEAR Protocol SDK for Flutter/Dart.
 
-[![CI](https://github.com/0xJesus/NearFlutter/actions/workflows/ci.yml/badge.svg)](https://github.com/0xJesus/NearFlutter/actions/workflows/ci.yml)
-[![pub package](https://img.shields.io/pub/v/near_jsonrpc_client.svg)](https://pub.dev/packages/near_jsonrpc_client)
+[![pub package](https://img.shields.io/pub/v/near_flutter.svg)](https://pub.dev/packages/near_flutter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Packages
+A type-safe, platform-agnostic SDK for building NEAR Protocol applications with Flutter and Dart. Works on iOS, Android, Web, and Desktop.
 
-| Package | Description |
-|---------|-------------|
-| [near_jsonrpc_types](packages/near_jsonrpc_types) | Type definitions and serialization for NEAR RPC |
-| [near_jsonrpc_client](packages/near_jsonrpc_client) | HTTP client with typed methods for NEAR RPC |
+## Features
 
-## Quick Start
+- **RPC Client**: Query blockchain state, accounts, contracts, and validators
+- **Wallet Integration**: Connect wallets via WalletConnect or deep links
+- **Type-Safe Primitives**: `AccountId`, `NearToken`, `PublicKey`, `CryptoHash`
+- **Transaction Building**: Construct and sign transactions with multiple actions
+- **NEP-413 Support**: Message signing for authentication
 
-### Installation
+## Installation
 
 ```yaml
 dependencies:
-  near_jsonrpc_client: ^0.1.0
+  near_flutter: ^0.1.0
 ```
 
-### Basic Usage
+## Quick Start
 
 ```dart
-import 'package:near_jsonrpc_client/near_jsonrpc_client.dart';
+import 'package:near_flutter/near_flutter.dart';
 
 void main() async {
-  // Create a client for testnet
-  final client = NearRpcClient.testnet();
+  // Create client (mainnet or testnet)
+  final client = NearRpcClient.mainnet();
 
-  // Get node status
-  final statusResult = await client.status();
-  switch (statusResult) {
+  // Get network status
+  final status = await client.status();
+  switch (status) {
     case RpcSuccess(:final value):
-      print('Chain ID: ${value.chainId}');
-      print('Latest block: ${value.syncInfo.latestBlockHeight}');
+      print('Chain: ${value.chainId}');
+      print('Block: ${value.syncInfo.latestBlockHeight}');
     case RpcFailure(:final error):
       print('Error: ${error.message}');
   }
 
-  // Get account information
-  final accountResult = await client.viewAccount(
-    accountId: AccountId('alice.testnet'),
+  // Query account
+  final result = await client.viewAccount(
+    accountId: AccountId('alice.near'),
     blockReference: BlockReference.finality(Finality.final_),
   );
 
-  if (accountResult.isSuccess) {
-    final account = accountResult.getOrNull()!;
+  if (result.isSuccess) {
+    final account = result.getOrNull()!;
     print('Balance: ${account.amount.toNear()} NEAR');
   }
 
-  // Get block information
-  final blockResult = await client.block(
-    BlockReference.finality(Finality.final_),
-  );
-
-  // Get gas price
-  final gasPriceResult = await client.gasPrice();
-
-  // Clean up
   client.close();
 }
 ```
 
-## Features
+## RPC Client
 
-### Type Safety
-
-All responses are strongly typed using Dart's sealed classes for exhaustive pattern matching:
-
-```dart
-final result = await client.status();
-
-// Exhaustive pattern matching
-switch (result) {
-  case RpcSuccess(:final value):
-    // Access typed response
-    print(value.chainId);
-  case RpcFailure(:final error):
-    // Handle typed error
-    print(error.message);
-}
-
-// Or use convenience methods
-final status = result.getOrNull();
-final statusOrThrow = result.getOrThrow();
-```
-
-### Block References
-
-Query data at different points in the blockchain:
-
-```dart
-// Latest finalized block (recommended)
-BlockReference.finality(Finality.final_)
-
-// Latest block (may be reorganized)
-BlockReference.finality(Finality.optimistic)
-
-// Specific block height
-BlockReference.blockId(123456789)
-
-// Specific block hash
-BlockReference.blockHash(CryptoHash('abc...'))
-```
-
-### Network Configuration
-
-```dart
-// Testnet (for development)
-final client = NearRpcClient.testnet();
-
-// Mainnet (for production)
-final client = NearRpcClient.mainnet();
-
-// Custom RPC endpoint
-final client = NearRpcClient(rpcUrl: 'https://your-rpc-node.com');
-```
-
-## API Reference
-
-### Node Status
+### Network Status
 
 ```dart
 final result = await client.status();
 ```
-
-Returns node version, chain ID, protocol version, and sync status.
-
-### Block Information
-
-```dart
-final result = await client.block(blockReference);
-```
-
-Returns block header, author, and chunk information.
 
 ### Account Information
 
 ```dart
 final result = await client.viewAccount(
-  accountId: AccountId('alice.testnet'),
+  accountId: AccountId('alice.near'),
   blockReference: BlockReference.finality(Finality.final_),
 );
 ```
 
-Returns account balance, storage usage, and code hash.
-
-### Access Key Information
+### Call Contract View Function
 
 ```dart
-final result = await client.viewAccessKey(
-  accountId: AccountId('alice.testnet'),
-  publicKey: PublicKey('ed25519:...'),
+final result = await client.callFunction(
+  accountId: AccountId('token.near'),
+  methodName: 'ft_balance_of',
+  args: {'account_id': 'alice.near'},
   blockReference: BlockReference.finality(Finality.final_),
 );
-```
 
-Returns access key nonce and permission scope.
-
-### Gas Price
-
-```dart
-final result = await client.gasPrice();
-```
-
-Returns current gas price in yoctoNEAR per gas unit.
-
-## Error Handling
-
-Errors are categorized for easy handling:
-
-```dart
-switch (error.kind) {
-  case RpcErrorKind.rpcError:
-    // JSON-RPC protocol error
-  case RpcErrorKind.httpError:
-    // HTTP transport error
-  case RpcErrorKind.networkError:
-    // Network connectivity error
-  case RpcErrorKind.timeout:
-    // Request timeout
-  case RpcErrorKind.parseError:
-    // Response parsing error
-  case RpcErrorKind.cancelled:
-    // Request was cancelled
-  case RpcErrorKind.runtimeError:
-    // NEAR runtime error
-  case RpcErrorKind.unknown:
-    // Unknown error
+if (result.isSuccess) {
+  final balance = result.getOrNull()!.resultAsJson();
+  print('Token balance: $balance');
 }
 ```
 
-## Development
+### Validators
 
-### Running Tests
+```dart
+final result = await client.validators();
+if (result.isSuccess) {
+  final validators = result.getOrNull()!;
+  print('Current validators: ${validators.currentValidators.length}');
+}
+```
+
+## Wallet Integration
+
+### Building Transactions
+
+```dart
+// Simple transfer
+final tx = Transaction(
+  signerId: AccountId('alice.near'),
+  receiverId: AccountId('bob.near'),
+  actions: [
+    TransferAction(deposit: NearToken.fromNear(1)),
+  ],
+);
+
+// Contract function call
+final tx = Transaction(
+  signerId: AccountId('alice.near'),
+  receiverId: AccountId('token.near'),
+  actions: [
+    FunctionCallAction(
+      methodName: 'ft_transfer',
+      args: {'receiver_id': 'bob.near', 'amount': '1000000'},
+      deposit: NearToken.oneYocto(),
+    ),
+  ],
+);
+```
+
+### Action Types
+
+```dart
+CreateAccountAction()
+DeployContractAction(code: wasmBytes)
+FunctionCallAction(methodName: 'method', args: {...}, deposit: NearToken.zero())
+TransferAction(deposit: NearToken.fromNear(10))
+StakeAction(stake: NearToken.fromNear(100), publicKey: PublicKey('ed25519:...'))
+AddKeyAction(publicKey: key, accessKey: FullAccessKey())
+DeleteKeyAction(publicKey: key)
+DeleteAccountAction(beneficiaryId: AccountId('beneficiary.near'))
+```
+
+### MyNearWallet Integration
+
+```dart
+final adapter = MyNearWalletAdapter(
+  config: MyNearWalletConfig(
+    contractId: AccountId('app.near'),
+    successUrl: 'myapp://callback/success',
+    failureUrl: 'myapp://callback/failure',
+    network: MyNearWalletNetwork.mainnet,
+  ),
+  launchUrl: (uri) async {
+    // Use url_launcher package
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  },
+);
+
+// Sign in
+await adapter.signIn(contractId: AccountId('app.near'));
+
+// Handle callback in your app
+final callback = adapter.handleCallback(callbackUri);
+if (callback.isSuccess) {
+  print('Connected: ${callback.accountId}');
+}
+```
+
+## Type-Safe Primitives
+
+### AccountId
+
+```dart
+final account = AccountId('alice.near');  // Validates format
+```
+
+### NearToken
+
+```dart
+final amount = NearToken.fromNear(10);     // 10 NEAR
+final small = NearToken.oneYocto();        // 1 yoctoNEAR
+final zero = NearToken.zero();
+print(amount.toNear());  // 10.0
+```
+
+### PublicKey
+
+```dart
+final key = PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp');
+print(key.keyType);  // KeyType.ed25519
+```
+
+### BlockReference
+
+```dart
+BlockReference.finality(Finality.final_)  // Latest finalized
+BlockReference.finality(Finality.optimistic)  // Latest (may reorg)
+BlockReference.blockId(123456789)  // Specific height
+BlockReference.blockHash(CryptoHash('...'))  // Specific hash
+```
+
+## Error Handling
+
+```dart
+final result = await client.viewAccount(...);
+
+switch (result) {
+  case RpcSuccess(:final value):
+    print('Balance: ${value.amount.toNear()}');
+  case RpcFailure(:final error):
+    switch (error.kind) {
+      case RpcErrorKind.rpcError:
+        print('RPC error: ${error.message}');
+      case RpcErrorKind.networkError:
+        print('Network error');
+      case RpcErrorKind.timeout:
+        print('Request timeout');
+      default:
+        print('Error: ${error.message}');
+    }
+}
+```
+
+## Example App
+
+See the [example](example/) directory for a complete Flutter app demonstrating network status and account lookup.
+
+## Testing
 
 ```bash
-# Unit tests
 dart test
-
-# Integration tests (requires network)
-dart test --tags integration
 ```
 
-### Code Generation
-
-The types are designed to be extended with code generation:
-
-```bash
-dart run build_runner build
-```
+111 tests covering unit tests, integration tests against NEAR testnet and mainnet.
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## Contributing
+## Links
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+- [pub.dev](https://pub.dev/packages/near_flutter)
+- [GitHub](https://github.com/0xjesus/near_flutter)
+- [NEAR Protocol](https://near.org)
