@@ -26,8 +26,16 @@ end-to-end against real testnet.
 - **base58 encoding/decoding** (`base58Encode`, `base58Decode`)
 - `Transaction` now carries optional `publicKey`, `nonce`, `blockHash`
   (+ `copyWith`)
+- **`NearToken` hardening**: exact `parse()` (decimal NEAR → yocto, no
+  float), `toNearString()` (precise display, optional fixed decimals), and
+  safe arithmetic (`+`, `-` with negative guard, `<`/`>`/`<=`/`>=`,
+  `compareTo`). `toString()` is now exact.
+- **Configurable RPC `timeout`** (default 30s): a stalled node yields
+  `RpcError.timeout` and triggers failover instead of hanging forever
 - Real-transaction E2E test against testnet (faucet account → transfer →
   delete), wired into scheduled CI
+- Verified on every platform: VM, web (dart2js **and** dart2wasm) — local
+  signing produces identical bytes on all
 
 ### Changed
 
