@@ -127,11 +127,30 @@ void main() {
     });
 
     group('buildTransactionUrl', () {
-      test('builds single transaction URL', () {
-        final tx = Transaction(
-          signerId: AccountId('alice.near'),
-          receiverId: AccountId('bob.near'),
-          actions: [TransferAction(deposit: NearToken.fromNear(1))],
+      // MyNearWallet's /sign endpoint expects `transactions` to be a
+      // comma-separated list of base64-encoded *Borsh-serialized* full
+      // Transaction objects (each carrying publicKey, nonce and blockHash),
+      // exactly like near-api-js. A JSON encoding cannot be processed.
+      Transaction signableTx({
+        required String receiver,
+        required NearToken amount,
+      }) => Transaction(
+        signerId: AccountId('alice.near'),
+        receiverId: AccountId(receiver),
+        publicKey: PublicKey(
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+        ),
+        nonce: BigInt.from(42),
+        blockHash: const CryptoHash(
+          '244ZQ9cgj3CQ6bWBdytfrJMuMQ1jdXLFGnr4HhvtCTnM',
+        ),
+        actions: [TransferAction(deposit: amount)],
+      );
+
+      test('encodes a single transaction as base64 Borsh', () {
+        final tx = signableTx(
+          receiver: 'bob.near',
+          amount: NearToken.fromNear(1),
         );
 
         final url = mainnetAdapter.buildTransactionUrl(transactions: [tx]);
@@ -139,40 +158,41 @@ void main() {
         expect(url.scheme, equals('https'));
         expect(url.host, equals('app.mynearwallet.com'));
         expect(url.path, equals('/sign'));
-        expect(url.queryParameters.containsKey('transactions'), isTrue);
+        // Must be base64 of the Borsh bytes — NOT JSON.
+        expect(
+          url.queryParameters['transactions'],
+          equals(base64Encode(serializeTransaction(tx))),
+        );
         expect(
           url.queryParameters['callbackUrl'],
           equals('https://app.com/callback/success'),
         );
       });
 
-      test('builds multiple transactions URL', () {
-        final tx1 = Transaction(
-          signerId: AccountId('alice.near'),
-          receiverId: AccountId('bob.near'),
-          actions: [TransferAction(deposit: NearToken.fromNear(1))],
+      test('joins multiple transactions with commas, each base64 Borsh', () {
+        final tx1 = signableTx(
+          receiver: 'bob.near',
+          amount: NearToken.fromNear(1),
         );
-        final tx2 = Transaction(
-          signerId: AccountId('alice.near'),
-          receiverId: AccountId('carol.near'),
-          actions: [TransferAction(deposit: NearToken.fromNear(2))],
+        final tx2 = signableTx(
+          receiver: 'carol.near',
+          amount: NearToken.fromNear(2),
         );
 
         final url = mainnetAdapter.buildTransactionUrl(
           transactions: [tx1, tx2],
         );
 
-        final txData = jsonDecode(url.queryParameters['transactions']!) as List;
-        expect(txData.length, equals(2));
-        expect(txData[0]['receiverId'], equals('bob.near'));
-        expect(txData[1]['receiverId'], equals('carol.near'));
+        final parts = url.queryParameters['transactions']!.split(',');
+        expect(parts, hasLength(2));
+        expect(parts[0], equals(base64Encode(serializeTransaction(tx1))));
+        expect(parts[1], equals(base64Encode(serializeTransaction(tx2))));
       });
 
       test('uses custom callback URL when provided', () {
-        final tx = Transaction(
-          signerId: AccountId('alice.near'),
-          receiverId: AccountId('bob.near'),
-          actions: [TransferAction(deposit: NearToken.fromNear(1))],
+        final tx = signableTx(
+          receiver: 'bob.near',
+          amount: NearToken.fromNear(1),
         );
 
         final url = mainnetAdapter.buildTransactionUrl(
@@ -186,25 +206,20 @@ void main() {
         );
       });
 
-      test('encodes function call action correctly', () {
-        final tx = Transaction(
+      test('throws when a transaction lacks nonce/blockHash', () {
+        // Without signing fields the transaction cannot be Borsh-serialized,
+        // so the URL would be invalid — fail loudly instead of silently
+        // producing something MyNearWallet rejects.
+        final incomplete = Transaction(
           signerId: AccountId('alice.near'),
-          receiverId: AccountId('contract.near'),
-          actions: [
-            FunctionCallAction(
-              methodName: 'my_method',
-              args: {'key': 'value'},
-              deposit: NearToken.zero(),
-            ),
-          ],
+          receiverId: AccountId('bob.near'),
+          actions: [TransferAction(deposit: NearToken.fromNear(1))],
         );
 
-        final url = mainnetAdapter.buildTransactionUrl(transactions: [tx]);
-        final txData = jsonDecode(url.queryParameters['transactions']!) as List;
-
-        expect(txData[0]['receiverId'], equals('contract.near'));
-        expect(txData[0]['actions'], isA<List>());
-        expect(txData[0]['actions'].length, equals(1));
+        expect(
+          () => mainnetAdapter.buildTransactionUrl(transactions: [incomplete]),
+          throwsStateError,
+        );
       });
     });
 

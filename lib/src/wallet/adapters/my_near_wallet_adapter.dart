@@ -166,22 +166,25 @@ class MyNearWalletAdapter implements WalletAdapter {
     return _account != null;
   }
 
-  /// Builds a transaction signing URL.
+  /// Builds a transaction signing URL for MyNearWallet's `/sign` endpoint.
+  ///
+  /// `transactions` is a comma-separated list of base64-encoded
+  /// Borsh-serialized [Transaction] objects (the same wire format
+  /// near-api-js uses). Each transaction must carry [Transaction.publicKey],
+  /// [Transaction.nonce] and [Transaction.blockHash]; otherwise
+  /// `serializeTransaction` throws a [StateError].
   Uri buildTransactionUrl({
     required List<Transaction> transactions,
     String? callbackUrl,
   }) {
-    final txData = transactions.map((tx) {
-      final actions = tx.actions
-          .map((a) => base64Encode(utf8.encode(jsonEncode(a.toJson()))))
-          .toList();
-      return {'receiverId': tx.receiverId.value, 'actions': actions};
-    }).toList();
+    final txParam = transactions
+        .map((tx) => base64Encode(serializeTransaction(tx)))
+        .join(',');
 
     return Uri.parse(config.walletUrl).replace(
       path: '/sign',
       queryParameters: {
-        'transactions': jsonEncode(txData),
+        'transactions': txParam,
         'callbackUrl': callbackUrl ?? config.successUrl,
       },
     );

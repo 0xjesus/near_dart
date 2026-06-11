@@ -103,10 +103,18 @@ void main() {
     });
 
     test('complete transfer transaction URL flow', () {
-      // Step 1: Create transfer transaction
+      // Step 1: Create a fully-formed transfer transaction (MyNearWallet
+      // signs it, so it must carry publicKey, nonce and blockHash).
       final transaction = Transaction(
         signerId: AccountId('alice.testnet'),
         receiverId: AccountId('bob.testnet'),
+        publicKey: PublicKey(
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+        ),
+        nonce: BigInt.from(7),
+        blockHash: const CryptoHash(
+          '244ZQ9cgj3CQ6bWBdytfrJMuMQ1jdXLFGnr4HhvtCTnM',
+        ),
         actions: [TransferAction(deposit: NearToken.fromNear(5))],
       );
 
@@ -122,10 +130,12 @@ void main() {
       expect(txUrl.path, equals('/sign'));
       expect(txUrl.queryParameters['callbackUrl'], equals('myapp://tx/result'));
 
-      // Step 3: Parse transaction data from URL
-      final txData = jsonDecode(txUrl.queryParameters['transactions']!) as List;
-      expect(txData.length, equals(1));
-      expect(txData[0]['receiverId'], equals('bob.testnet'));
+      // Step 3: The transactions param is base64 Borsh (what MyNearWallet
+      // actually consumes), not JSON.
+      expect(
+        txUrl.queryParameters['transactions'],
+        equals(base64Encode(serializeTransaction(transaction))),
+      );
 
       // Step 4: Simulate success callback with transaction hash
       final successCallback = Uri.parse(
@@ -138,38 +148,40 @@ void main() {
     });
 
     test('multiple transactions URL flow', () {
-      // Create multiple transactions
+      const publicKey = 'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj';
+      const blockHash = '244ZQ9cgj3CQ6bWBdytfrJMuMQ1jdXLFGnr4HhvtCTnM';
+      Transaction tx(String receiver, List<Action> actions) => Transaction(
+        signerId: AccountId('alice.testnet'),
+        receiverId: AccountId(receiver),
+        publicKey: PublicKey(publicKey),
+        nonce: BigInt.from(7),
+        blockHash: const CryptoHash(blockHash),
+        actions: actions,
+      );
+
       final transactions = [
-        Transaction(
-          signerId: AccountId('alice.testnet'),
-          receiverId: AccountId('bob.testnet'),
-          actions: [TransferAction(deposit: NearToken.fromNear(1))],
-        ),
-        Transaction(
-          signerId: AccountId('alice.testnet'),
-          receiverId: AccountId('carol.testnet'),
-          actions: [TransferAction(deposit: NearToken.fromNear(2))],
-        ),
-        Transaction(
-          signerId: AccountId('alice.testnet'),
-          receiverId: AccountId('contract.testnet'),
-          actions: [
-            FunctionCallAction(
-              methodName: 'do_something',
-              args: {'param': 'value'},
-              deposit: NearToken.zero(),
-            ),
-          ],
-        ),
+        tx('bob.testnet', [TransferAction(deposit: NearToken.fromNear(1))]),
+        tx('carol.testnet', [TransferAction(deposit: NearToken.fromNear(2))]),
+        tx('contract.testnet', [
+          FunctionCallAction(
+            methodName: 'do_something',
+            args: {'param': 'value'},
+            deposit: NearToken.zero(),
+          ),
+        ]),
       ];
 
       final txUrl = adapter.buildTransactionUrl(transactions: transactions);
 
-      final txData = jsonDecode(txUrl.queryParameters['transactions']!) as List;
-      expect(txData.length, equals(3));
-      expect(txData[0]['receiverId'], equals('bob.testnet'));
-      expect(txData[1]['receiverId'], equals('carol.testnet'));
-      expect(txData[2]['receiverId'], equals('contract.testnet'));
+      // Comma-separated base64 Borsh, one entry per transaction.
+      final parts = txUrl.queryParameters['transactions']!.split(',');
+      expect(parts, hasLength(3));
+      for (var i = 0; i < transactions.length; i++) {
+        expect(
+          parts[i],
+          equals(base64Encode(serializeTransaction(transactions[i]))),
+        );
+      }
 
       // Simulate callback with multiple hashes
       final callback = Uri.parse(

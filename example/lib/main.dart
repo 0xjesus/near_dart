@@ -15,6 +15,17 @@ void main() {
 // Callback URL scheme for wallet authentication
 const String kCallbackScheme = 'nearsdk';
 
+/// Formats an RPC error for display, including the node's `data` detail
+/// (e.g. "State of contract X is too large to be viewed") which is far
+/// more useful than the generic "Server error" message alone.
+String describeRpcError(RpcError e) {
+  final data = e.data;
+  if (data != null && '$data'.isNotEmpty && '$data' != 'null') {
+    return '${e.message}: $data';
+  }
+  return e.message;
+}
+
 // NEAR Official Colors
 class NearTheme {
   static const black = Color(0xFF000000);
@@ -823,7 +834,10 @@ class _LocalSigningPageState extends State<LocalSigningPage> {
           });
           _set(busy: false, status: 'Executed on-chain ✓');
         case RpcFailure(:final error):
-          _set(busy: false, error: 'send_tx failed: ${error.message}');
+          _set(
+            busy: false,
+            error: 'send_tx failed: ${describeRpcError(error)}',
+          );
       }
     } catch (e) {
       _set(busy: false, error: '$e');
@@ -1056,7 +1070,7 @@ class _NetworkStatusPageState extends State<NetworkStatusPage> {
       if (result.isSuccess) {
         _status = result.getOrThrow();
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1176,7 +1190,7 @@ class _AccountExplorerPageState extends State<AccountExplorerPage> {
       if (result.isSuccess) {
         _account = result.getOrThrow();
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1296,7 +1310,7 @@ class _AccessKeysPageState extends State<AccessKeysPage> {
       if (result.isSuccess) {
         _keys = result.getOrThrow().keys;
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1461,7 +1475,7 @@ class _ContractCallsPageState extends State<ContractCallsPage> {
       if (result.isSuccess) {
         _metadata = result.getOrThrow().resultAsJson() as Map<String, dynamic>;
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1483,7 +1497,7 @@ class _ContractCallsPageState extends State<ContractCallsPage> {
       if (result.isSuccess) {
         _totalSupply = result.getOrThrow().resultAsJson() as String;
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1510,7 +1524,7 @@ class _ContractCallsPageState extends State<ContractCallsPage> {
       if (result.isSuccess) {
         _balance = result.getOrThrow().resultAsJson() as String;
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1634,7 +1648,7 @@ class _ValidatorsPageState extends State<ValidatorsPage> {
       if (result.isSuccess) {
         _validators = result.getOrThrow();
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1773,7 +1787,7 @@ class _BlockExplorerPageState extends State<BlockExplorerPage> {
       if (result.isSuccess) {
         _block = result.getOrThrow();
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -1904,7 +1918,7 @@ class _GasPricePageState extends State<GasPricePage> {
       if (result.isSuccess) {
         _gasPrice = result.getOrThrow();
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -2012,7 +2026,7 @@ class _CodeStatePageState extends State<CodeStatePage> {
       if (result.isSuccess) {
         _code = result.getOrThrow();
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -2034,7 +2048,7 @@ class _CodeStatePageState extends State<CodeStatePage> {
       if (result.isSuccess) {
         _state = result.getOrThrow();
       } else {
-        _error = (result as RpcFailure).error.message;
+        _error = describeRpcError((result as RpcFailure).error);
       }
     });
   }
@@ -3209,9 +3223,20 @@ class _WalletUrlPageState extends State<WalletUrlPage> {
   void _buildTxUrl() {
     final adapter = _createAdapter();
 
+    // MyNearWallet signs the transaction, but it still needs a complete,
+    // Borsh-serializable Transaction: publicKey, nonce and a recent
+    // blockHash. (Example values — a real app fetches nonce via
+    // viewAccessKey and blockHash via block().)
     final tx = Transaction(
       signerId: AccountId('alice.near'),
       receiverId: AccountId('bob.near'),
+      publicKey: PublicKey(
+        'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+      ),
+      nonce: BigInt.from(1),
+      blockHash: const CryptoHash(
+        '244ZQ9cgj3CQ6bWBdytfrJMuMQ1jdXLFGnr4HhvtCTnM',
+      ),
       actions: [TransferAction(deposit: NearToken.fromNear(1))],
     );
 
