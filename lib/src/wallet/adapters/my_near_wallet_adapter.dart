@@ -2,10 +2,6 @@ import 'dart:convert';
 
 import 'package:near_dart/near_dart.dart';
 
-import 'package:near_dart/src/wallet/execution_outcome.dart';
-import 'package:near_dart/src/wallet/transaction.dart';
-import 'package:near_dart/src/wallet/wallet_adapter.dart';
-
 /// Configuration for MyNearWallet adapter.
 class MyNearWalletConfig {
   const MyNearWalletConfig({
@@ -39,10 +35,7 @@ class MyNearWalletConfig {
 }
 
 /// MyNearWallet network options.
-enum MyNearWalletNetwork {
-  mainnet,
-  testnet,
-}
+enum MyNearWalletNetwork { mainnet, testnet }
 
 /// Callback type for launching URLs.
 ///
@@ -80,10 +73,7 @@ typedef UrlLauncher = Future<bool> Function(Uri uri);
 /// 2. Handle the callback URLs to extract account information
 /// 3. Call handleCallback() when your app receives the deep link
 class MyNearWalletAdapter implements WalletAdapter {
-  MyNearWalletAdapter({
-    required this.config,
-    required this.launchUrl,
-  });
+  MyNearWalletAdapter({required this.config, required this.launchUrl});
 
   final MyNearWalletConfig config;
   final UrlLauncher launchUrl;
@@ -100,8 +90,7 @@ class MyNearWalletAdapter implements WalletAdapter {
   String get name => 'MyNearWallet';
 
   @override
-  String? get iconUrl =>
-      'https://app.mynearwallet.com/favicon.ico';
+  String? get iconUrl => 'https://app.mynearwallet.com/favicon.ico';
 
   /// Builds the sign-in URL for MyNearWallet.
   Uri buildSignInUrl({
@@ -114,8 +103,7 @@ class MyNearWalletAdapter implements WalletAdapter {
         'contract_id': contractId.value,
         'success_url': config.successUrl,
         'failure_url': config.failureUrl,
-        if (methodNames != null && methodNames.isNotEmpty)
-          'public_key': 'true',
+        if (methodNames != null && methodNames.isNotEmpty) 'public_key': 'true',
       },
     );
   }
@@ -187,10 +175,7 @@ class MyNearWalletAdapter implements WalletAdapter {
       final actions = tx.actions
           .map((a) => base64Encode(utf8.encode(jsonEncode(a.toJson()))))
           .toList();
-      return {
-        'receiverId': tx.receiverId.value,
-        'actions': actions,
-      };
+      return {'receiverId': tx.receiverId.value, 'actions': actions};
     }).toList();
 
     return Uri.parse(config.walletUrl).replace(
@@ -246,12 +231,14 @@ class MyNearWalletAdapter implements WalletAdapter {
     if (callback.isError) {
       return [
         TransactionResult(
-          transactionHash: CryptoHash(''),
+          transactionHash: const CryptoHash(''),
           outcome: ExecutionOutcome(
-            status: ExecutionStatus.failure(ExecutionError(
-              errorType: callback.errorCode ?? 'Unknown',
-              errorMessage: callback.errorMessage ?? 'Unknown error',
-            )),
+            status: ExecutionStatus.failure(
+              ExecutionError(
+                errorType: callback.errorCode ?? 'Unknown',
+                errorMessage: callback.errorMessage ?? 'Unknown error',
+              ),
+            ),
             gasBurnt: BigInt.zero,
           ),
         ),
@@ -301,7 +288,9 @@ class MyNearWalletAdapter implements WalletAdapter {
     final params = callbackUri.queryParameters;
 
     return SignedMessage(
-      accountId: AccountId(params['accountId'] ?? _account?.accountId.value ?? ''),
+      accountId: AccountId(
+        params['accountId'] ?? _account?.accountId.value ?? '',
+      ),
       publicKey: PublicKey(params['publicKey'] ?? 'ed25519:placeholder'),
       signature: params['signature'] ?? '',
       state: params['state'],

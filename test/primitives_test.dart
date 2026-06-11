@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:test/test.dart';
 import 'package:near_dart/near_dart.dart';
 
@@ -7,14 +6,14 @@ void main() {
     test('creates from valid base58 string', () {
       // Valid 32-byte hash in base58
       const validHash = '11111111111111111111111111111111';
-      final hash = CryptoHash(validHash);
+      const hash = CryptoHash(validHash);
 
       expect(hash.value, equals(validHash));
     });
 
     test('serializes to string in JSON', () {
       const hashStr = '9FsxVXBh5p1J7EBP2LXB7j2Z3nVqgDctPCbKxVJkNs7f';
-      final hash = CryptoHash(hashStr);
+      const hash = CryptoHash(hashStr);
 
       expect(hash.toJson(), equals(hashStr));
     });
@@ -28,8 +27,8 @@ void main() {
 
     test('two hashes with same value are equal', () {
       const hashStr = '11111111111111111111111111111111';
-      final hash1 = CryptoHash(hashStr);
-      final hash2 = CryptoHash(hashStr);
+      const hash1 = CryptoHash(hashStr);
+      const hash2 = CryptoHash(hashStr);
 
       expect(hash1, equals(hash2));
     });
@@ -69,17 +68,17 @@ void main() {
       expect(() => AccountId(''), throwsArgumentError);
 
       // Invalid: too long (>64 chars for non-implicit)
-      expect(
-        () => AccountId('a' * 65),
-        throwsArgumentError,
-      );
+      expect(() => AccountId('a' * 65), throwsArgumentError);
     });
   });
 
   group('NearToken', () {
     test('creates from yoctoNEAR string', () {
       final token = NearToken.fromYocto('1000000000000000000000000');
-      expect(token.yoctoNear, equals(BigInt.parse('1000000000000000000000000')));
+      expect(
+        token.yoctoNear,
+        equals(BigInt.parse('1000000000000000000000000')),
+      );
     });
 
     test('creates from NEAR amount', () {
@@ -173,7 +172,7 @@ void main() {
 
     test('creates block hash reference', () {
       const hash = '9FsxVXBh5p1J7EBP2LXB7j2Z3nVqgDctPCbKxVJkNs7f';
-      final ref = BlockReference.blockHash(CryptoHash(hash));
+      final ref = BlockReference.blockHash(const CryptoHash(hash));
 
       expect(ref.toJson(), equals({'block_id': hash}));
     });

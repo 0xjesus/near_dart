@@ -13,11 +13,8 @@ class JsonRpcRequest extends Equatable {
   /// Creates a new JSON-RPC request.
   ///
   /// If [id] is not provided, a unique identifier is generated.
-  JsonRpcRequest({
-    required this.method,
-    required this.params,
-    String? id,
-  }) : id = id ?? _generateId();
+  JsonRpcRequest({required this.method, required this.params, String? id})
+    : id = id ?? _generateId();
 
   /// The JSON-RPC version. Always "2.0".
   static const String jsonrpcVersion = '2.0';
@@ -40,11 +37,11 @@ class JsonRpcRequest extends Equatable {
 
   /// Converts this request to a JSON map.
   Map<String, dynamic> toJson() => {
-        'jsonrpc': jsonrpcVersion,
-        'method': method,
-        'params': params,
-        'id': id,
-      };
+    'jsonrpc': jsonrpcVersion,
+    'method': method,
+    'params': params,
+    'id': id,
+  };
 
   @override
   List<Object?> get props => [method, params, id];
@@ -60,16 +57,12 @@ class JsonRpcRequest extends Equatable {
 @immutable
 class JsonRpcResponse extends Equatable {
   /// Creates a successful response.
-  const JsonRpcResponse.success({
-    required this.id,
-    required this.result,
-  }) : error = null;
+  const JsonRpcResponse.success({required this.id, required this.result})
+    : error = null;
 
   /// Creates an error response.
-  const JsonRpcResponse.error({
-    required this.id,
-    required this.error,
-  }) : result = null;
+  const JsonRpcResponse.error({required this.id, required this.error})
+    : result = null;
 
   /// Creates a response from a JSON map.
   factory JsonRpcResponse.fromJson(Map<String, dynamic> json) {
@@ -82,10 +75,7 @@ class JsonRpcResponse extends Equatable {
       );
     }
 
-    return JsonRpcResponse.success(
-      id: id,
-      result: json['result'],
-    );
+    return JsonRpcResponse.success(id: id, result: json['result']);
   }
 
   /// The request identifier this response is for.
@@ -127,11 +117,7 @@ class JsonRpcResponse extends Equatable {
 @immutable
 class JsonRpcError extends Equatable {
   /// Creates a JSON-RPC error.
-  const JsonRpcError({
-    required this.code,
-    required this.message,
-    this.data,
-  });
+  const JsonRpcError({required this.code, required this.message, this.data});
 
   /// Creates an error from a JSON map.
   factory JsonRpcError.fromJson(Map<String, dynamic> json) {
@@ -153,10 +139,10 @@ class JsonRpcError extends Equatable {
 
   /// Converts this error to a JSON map.
   Map<String, dynamic> toJson() => {
-        'code': code,
-        'message': message,
-        if (data != null) 'data': data,
-      };
+    'code': code,
+    'message': message,
+    if (data != null) 'data': data,
+  };
 
   @override
   List<Object?> get props => [code, message, data];

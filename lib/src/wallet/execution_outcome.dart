@@ -18,9 +18,9 @@ class TransactionResult extends Equatable {
 
   /// Serializes to JSON.
   Map<String, dynamic> toJson() => {
-        'transaction_hash': transactionHash.value,
-        'outcome': outcome.toJson(),
-      };
+    'transaction_hash': transactionHash.value,
+    'outcome': outcome.toJson(),
+  };
 
   @override
   List<Object?> get props => [transactionHash, outcome];
@@ -50,11 +50,11 @@ class ExecutionOutcome extends Equatable {
 
   /// Serializes to JSON.
   Map<String, dynamic> toJson() => {
-        'status': status.toJson(),
-        'gas_burnt': gasBurnt.toString(),
-        'logs': logs,
-        'receipt_ids': receiptIds,
-      };
+    'status': status.toJson(),
+    'gas_burnt': gasBurnt.toString(),
+    'logs': logs,
+    'receipt_ids': receiptIds,
+  };
 
   @override
   List<Object?> get props => [status, gasBurnt, logs, receiptIds];
@@ -129,10 +129,7 @@ class ExecutionStatusFailure extends ExecutionStatus {
 /// An execution error.
 @immutable
 class ExecutionError extends Equatable {
-  const ExecutionError({
-    required this.errorType,
-    required this.errorMessage,
-  });
+  const ExecutionError({required this.errorType, required this.errorMessage});
 
   /// The type of error.
   final String errorType;
@@ -142,9 +139,9 @@ class ExecutionError extends Equatable {
 
   /// Serializes to JSON.
   Map<String, dynamic> toJson() => {
-        'error_type': errorType,
-        'error_message': errorMessage,
-      };
+    'error_type': errorType,
+    'error_message': errorMessage,
+  };
 
   @override
   List<Object?> get props => [errorType, errorMessage];

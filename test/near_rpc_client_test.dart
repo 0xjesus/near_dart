@@ -3,19 +3,18 @@ import 'package:test/test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:near_dart/near_dart.dart';
-import 'package:near_dart/near_dart.dart';
 
 void main() {
   group('NearRpcClient', () {
     group('configuration', () {
       test('creates client with default testnet URL', () {
         final client = NearRpcClient.testnet();
-        expect(client.rpcUrl, equals('https://rpc.testnet.near.org'));
+        expect(client.rpcUrl, equals('https://test.rpc.fastnear.com'));
       });
 
       test('creates client with default mainnet URL', () {
         final client = NearRpcClient.mainnet();
-        expect(client.rpcUrl, equals('https://rpc.mainnet.near.org'));
+        expect(client.rpcUrl, equals('https://free.rpc.fastnear.com'));
       });
 
       test('creates client with custom URL', () {
@@ -29,7 +28,7 @@ void main() {
         final mockClient = MockClient((request) async {
           expect(request.method, equals('POST'));
           // Path is empty string for base URL without trailing slash
-          expect(request.url.host, equals('rpc.testnet.near.org'));
+          expect(request.url.host, equals('test.rpc.fastnear.com'));
 
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           expect(body['method'], equals('status'));
@@ -47,7 +46,8 @@ void main() {
                 'rpc_addr': '0.0.0.0:3030',
                 'validators': [],
                 'sync_info': {
-                  'latest_block_hash': '9FsxVXBh5p1J7EBP2LXB7j2Z3nVqgDctPCbKxVJkNs7f',
+                  'latest_block_hash':
+                      '9FsxVXBh5p1J7EBP2LXB7j2Z3nVqgDctPCbKxVJkNs7f',
                   'latest_block_height': 123456789,
                   'latest_state_root': 'ABC123',
                   'latest_block_time': '2024-01-01T00:00:00Z',

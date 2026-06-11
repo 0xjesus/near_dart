@@ -102,21 +102,21 @@ class ChunkHeaderView extends Equatable {
 
   @override
   List<Object?> get props => [
-        chunkHash,
-        prevBlockHash,
-        outcomeRoot,
-        prevStateRoot,
-        encodedMerkleRoot,
-        encodedLength,
-        heightCreated,
-        heightIncluded,
-        shardId,
-        gasUsed,
-        gasLimit,
-        balanceBurnt,
-        outgoingReceiptsRoot,
-        txRoot,
-        validatorProposals,
-        signature,
-      ];
+    chunkHash,
+    prevBlockHash,
+    outcomeRoot,
+    prevStateRoot,
+    encodedMerkleRoot,
+    encodedLength,
+    heightCreated,
+    heightIncluded,
+    shardId,
+    gasUsed,
+    gasLimit,
+    balanceBurnt,
+    outgoingReceiptsRoot,
+    txRoot,
+    validatorProposals,
+    signature,
+  ];
 }

@@ -48,12 +48,12 @@ class ValidatorsResponse extends Equatable {
 
   @override
   List<Object?> get props => [
-        epochStartHeight,
-        currentValidators,
-        nextValidators,
-        currentProposals,
-        epochHeight,
-      ];
+    epochStartHeight,
+    currentValidators,
+    nextValidators,
+    currentProposals,
+    epochHeight,
+  ];
 }
 
 /// Information about a validator.
@@ -109,15 +109,15 @@ class ValidatorInfo extends Equatable {
 
   @override
   List<Object?> get props => [
-        accountId,
-        publicKey,
-        stake,
-        isSlashed,
-        numProducedBlocks,
-        numExpectedBlocks,
-        numProducedChunks,
-        numExpectedChunks,
-      ];
+    accountId,
+    publicKey,
+    stake,
+    isSlashed,
+    numProducedBlocks,
+    numExpectedBlocks,
+    numProducedChunks,
+    numExpectedChunks,
+  ];
 }
 
 /// A staking proposal from a validator.

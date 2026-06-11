@@ -14,6 +14,8 @@ enum ActionType {
   addKey,
   deleteKey,
   deleteAccount,
+  deployGlobalContract,
+  useGlobalContract,
 }
 
 /// Base class for all NEAR transaction actions.
@@ -56,8 +58,8 @@ class DeployContractAction extends Action {
 
   @override
   Map<String, dynamic> toJson() => {
-        'DeployContract': {'code': code},
-      };
+    'DeployContract': {'code': code},
+  };
 
   @override
   List<Object?> get props => [code];
@@ -126,10 +128,8 @@ class TransferAction extends Action {
 
   @override
   Map<String, dynamic> toJson() => {
-        'Transfer': {
-          'deposit': deposit.yoctoNear.toString(),
-        },
-      };
+    'Transfer': {'deposit': deposit.yoctoNear.toString()},
+  };
 
   @override
   List<Object?> get props => [deposit];
@@ -138,10 +138,7 @@ class TransferAction extends Action {
 /// Stakes NEAR tokens with a validator.
 @immutable
 class StakeAction extends Action {
-  const StakeAction({
-    required this.stake,
-    required this.publicKey,
-  });
+  const StakeAction({required this.stake, required this.publicKey});
 
   /// Amount of NEAR to stake.
   final NearToken stake;
@@ -154,11 +151,11 @@ class StakeAction extends Action {
 
   @override
   Map<String, dynamic> toJson() => {
-        'Stake': {
-          'stake': stake.yoctoNear.toString(),
-          'public_key': publicKey.value,
-        },
-      };
+    'Stake': {
+      'stake': stake.yoctoNear.toString(),
+      'public_key': publicKey.value,
+    },
+  };
 
   @override
   List<Object?> get props => [stake, publicKey];
@@ -167,10 +164,7 @@ class StakeAction extends Action {
 /// Adds a new access key to the account.
 @immutable
 class AddKeyAction extends Action {
-  const AddKeyAction({
-    required this.publicKey,
-    required this.accessKey,
-  });
+  const AddKeyAction({required this.publicKey, required this.accessKey});
 
   /// The public key to add.
   final PublicKey publicKey;
@@ -183,11 +177,8 @@ class AddKeyAction extends Action {
 
   @override
   Map<String, dynamic> toJson() => {
-        'AddKey': {
-          'public_key': publicKey.value,
-          'access_key': accessKey.toJson(),
-        },
-      };
+    'AddKey': {'public_key': publicKey.value, 'access_key': accessKey.toJson()},
+  };
 
   @override
   List<Object?> get props => [publicKey, accessKey];
@@ -206,10 +197,8 @@ class DeleteKeyAction extends Action {
 
   @override
   Map<String, dynamic> toJson() => {
-        'DeleteKey': {
-          'public_key': publicKey.value,
-        },
-      };
+    'DeleteKey': {'public_key': publicKey.value},
+  };
 
   @override
   List<Object?> get props => [publicKey];
@@ -228,13 +217,111 @@ class DeleteAccountAction extends Action {
 
   @override
   Map<String, dynamic> toJson() => {
-        'DeleteAccount': {
-          'beneficiary_id': beneficiaryId.value,
-        },
-      };
+    'DeleteAccount': {'beneficiary_id': beneficiaryId.value},
+  };
 
   @override
   List<Object?> get props => [beneficiaryId];
+}
+
+/// How a global contract is referenced after deployment (NEP-591).
+enum GlobalContractDeployMode {
+  /// Immutable: referenced by the code's hash.
+  codeHash,
+
+  /// Upgradable: referenced by the deployer's account ID.
+  accountId,
+}
+
+/// Deploys a contract to the global contract registry (NEP-591).
+///
+/// Global contracts are deployed once and can be reused by any account,
+/// avoiding per-account storage costs.
+@immutable
+class DeployGlobalContractAction extends Action {
+  const DeployGlobalContractAction({
+    required this.code,
+    required this.deployMode,
+  });
+
+  /// The WASM code of the contract.
+  final List<int> code;
+
+  /// Whether the contract is referenced by code hash or account ID.
+  final GlobalContractDeployMode deployMode;
+
+  @override
+  ActionType get type => ActionType.deployGlobalContract;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'DeployGlobalContract': {
+      'code': base64Encode(code),
+      'deploy_mode': deployMode == GlobalContractDeployMode.codeHash
+          ? 'CodeHash'
+          : 'AccountId',
+    },
+  };
+
+  @override
+  List<Object?> get props => [code, deployMode];
+}
+
+/// Identifies a global contract (NEP-591), by code hash or account ID.
+@immutable
+sealed class GlobalContractIdentifier extends Equatable {
+  const GlobalContractIdentifier();
+}
+
+/// References an immutable global contract by its code hash (32 bytes).
+@immutable
+class GlobalContractCodeHash extends GlobalContractIdentifier {
+  const GlobalContractCodeHash(this.hash);
+
+  /// The 32-byte SHA-256 hash of the contract code.
+  final List<int> hash;
+
+  @override
+  List<Object?> get props => [hash];
+}
+
+/// References an upgradable global contract by deployer account ID.
+@immutable
+class GlobalContractAccountId extends GlobalContractIdentifier {
+  const GlobalContractAccountId(this.accountId);
+
+  /// The account that deployed the global contract.
+  final AccountId accountId;
+
+  @override
+  List<Object?> get props => [accountId];
+}
+
+/// Attaches a global contract to the receiver account (NEP-591).
+@immutable
+class UseGlobalContractAction extends Action {
+  const UseGlobalContractAction({required this.identifier});
+
+  /// Which global contract to use.
+  final GlobalContractIdentifier identifier;
+
+  @override
+  ActionType get type => ActionType.useGlobalContract;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'UseGlobalContract': {
+      'contract_identifier': switch (identifier) {
+        GlobalContractCodeHash(:final hash) => {'CodeHash': base64Encode(hash)},
+        GlobalContractAccountId(:final accountId) => {
+          'AccountId': accountId.value,
+        },
+      },
+    },
+  };
+
+  @override
+  List<Object?> get props => [identifier];
 }
 
 /// Base class for access key configurations.
@@ -278,14 +365,14 @@ class FunctionCallAccessKey extends AccessKey {
 
   @override
   Map<String, dynamic> toJson() => {
-        'permission': {
-          'FunctionCall': {
-            'receiver_id': receiverId.value,
-            'method_names': methodNames,
-            'allowance': allowance?.yoctoNear.toString(),
-          },
-        },
-      };
+    'permission': {
+      'FunctionCall': {
+        'receiver_id': receiverId.value,
+        'method_names': methodNames,
+        'allowance': allowance?.yoctoNear.toString(),
+      },
+    },
+  };
 
   @override
   List<Object?> get props => [receiverId, methodNames, allowance];

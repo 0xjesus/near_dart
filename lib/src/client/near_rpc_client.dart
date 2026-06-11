@@ -4,14 +4,34 @@ import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 import 'package:near_dart/near_dart.dart';
 
-import 'responses/status_response.dart';
-import 'responses/block_response.dart';
-import 'responses/account_response.dart';
-import 'responses/gas_price_response.dart';
-import 'responses/call_function_response.dart';
-import 'responses/validators_response.dart';
-import 'responses/transaction_response.dart';
-import 'responses/chunk_response.dart';
+/// How long the RPC node should wait before returning a transaction result.
+///
+/// See https://docs.near.org/api/rpc/transactions for the semantics of
+/// each level.
+enum TxExecutionStatus {
+  /// Return immediately; the transaction is only validated and routed.
+  none('NONE'),
+
+  /// The transaction is included in a block.
+  included('INCLUDED'),
+
+  /// Executed optimistically; the result is known (default for `send_tx`).
+  executedOptimistic('EXECUTED_OPTIMISTIC'),
+
+  /// The block containing the transaction is final.
+  includedFinal('INCLUDED_FINAL'),
+
+  /// Executed and all non-refund receipts are final.
+  executed('EXECUTED'),
+
+  /// Everything, including refund receipts, is final.
+  final_('FINAL');
+
+  const TxExecutionStatus(this.rpcValue);
+
+  /// The wire value for the `wait_until` RPC parameter.
+  final String rpcValue;
+}
 
 /// A type-safe client for NEAR Protocol's JSON-RPC API.
 ///
@@ -33,37 +53,48 @@ import 'responses/chunk_response.dart';
 /// ```
 class NearRpcClient {
   /// Creates a client with a custom RPC URL.
+  ///
+  /// When [fallbackUrls] is non-empty, requests that fail at the
+  /// transport level (network errors, non-200 HTTP responses such as 429
+  /// rate limits) are retried against each fallback in order. JSON-RPC
+  /// level errors are returned as-is — they are answers, not outages.
   NearRpcClient({
     required this.rpcUrl,
+    this.fallbackUrls = const [],
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
 
   /// Creates a client configured for NEAR testnet.
+  ///
+  /// Defaults to FastNear's free tier. The legacy `rpc.testnet.near.org`
+  /// endpoint (deprecated in 2025, severely rate limited) is kept as a
+  /// fallback only.
   factory NearRpcClient.testnet({http.Client? httpClient}) {
     return NearRpcClient(
-      rpcUrl: 'https://rpc.testnet.near.org',
+      rpcUrl: 'https://test.rpc.fastnear.com',
+      fallbackUrls: const ['https://rpc.testnet.near.org'],
       httpClient: httpClient,
     );
   }
 
   /// Creates a client configured for NEAR mainnet.
+  ///
+  /// Defaults to FastNear's free tier. The legacy `rpc.mainnet.near.org`
+  /// endpoint (deprecated in 2025, severely rate limited) is kept as a
+  /// fallback only.
   factory NearRpcClient.mainnet({http.Client? httpClient}) {
     return NearRpcClient(
-      rpcUrl: 'https://rpc.mainnet.near.org',
+      rpcUrl: 'https://free.rpc.fastnear.com',
+      fallbackUrls: const ['https://rpc.mainnet.near.org'],
       httpClient: httpClient,
     );
   }
 
-  /// Creates a client configured for NEAR betanet.
-  factory NearRpcClient.betanet({http.Client? httpClient}) {
-    return NearRpcClient(
-      rpcUrl: 'https://rpc.betanet.near.org',
-      httpClient: httpClient,
-    );
-  }
-
-  /// The RPC endpoint URL.
+  /// The primary RPC endpoint URL.
   final String rpcUrl;
+
+  /// Fallback RPC endpoints, tried in order on transport-level failures.
+  final List<String> fallbackUrls;
 
   final http.Client _httpClient;
 
@@ -85,6 +116,20 @@ class NearRpcClient {
     String method,
     dynamic params,
     T Function(Map<String, dynamic>) parser,
+  ) {
+    return _callWithFailover(
+      method,
+      params,
+      (result) => parser(result as Map<String, dynamic>),
+    );
+  }
+
+  /// Posts a JSON-RPC request to the primary URL, retrying fallbacks on
+  /// transport-level failures, and parses the result with [parser].
+  Future<RpcResult<T>> _callWithFailover<T>(
+    String method,
+    dynamic params,
+    T Function(dynamic result) parser,
   ) async {
     final requestJson = {
       'jsonrpc': '2.0',
@@ -92,38 +137,49 @@ class NearRpcClient {
       'params': params,
       'id': 'near-dart-${DateTime.now().millisecondsSinceEpoch}',
     };
+    final body = jsonEncode(requestJson);
 
-    try {
-      final response = await _httpClient.post(
-        Uri.parse(rpcUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestJson),
-      );
+    RpcResult<T>? lastTransportFailure;
+    for (final url in [rpcUrl, ...fallbackUrls]) {
+      try {
+        final response = await _httpClient.post(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: body,
+        );
 
-      if (response.statusCode != 200) {
-        return RpcResult.failure(
-          RpcError.http(response.statusCode, response.body),
+        if (response.statusCode != 200) {
+          // Rate limits and server outages: try the next endpoint.
+          lastTransportFailure = RpcResult.failure(
+            RpcError.http(response.statusCode, response.body),
+          );
+          continue;
+        }
+
+        final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
+        final rpcResponse = JsonRpcResponse.fromJson(jsonResponse);
+
+        if (rpcResponse.isError) {
+          // The node answered: its error is the answer, not an outage.
+          return RpcResult.failure(
+            RpcError.fromJsonRpcError(rpcResponse.error!),
+          );
+        }
+
+        return RpcResult.success(parser(rpcResponse.result));
+      } on FormatException catch (e) {
+        return RpcResult.failure(RpcError.parse('Failed to parse response', e));
+      } on http.ClientException catch (e) {
+        lastTransportFailure = RpcResult.failure(
+          RpcError.network(e.message, e),
+        );
+      } catch (e) {
+        lastTransportFailure = RpcResult.failure(
+          RpcError.network('Unknown error: $e', e),
         );
       }
-
-      final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
-      final rpcResponse = JsonRpcResponse.fromJson(jsonResponse);
-
-      if (rpcResponse.isError) {
-        return RpcResult.failure(
-          RpcError.fromJsonRpcError(rpcResponse.error!),
-        );
-      }
-
-      final result = parser(rpcResponse.result as Map<String, dynamic>);
-      return RpcResult.success(result);
-    } on FormatException catch (e) {
-      return RpcResult.failure(RpcError.parse('Failed to parse response', e));
-    } on http.ClientException catch (e) {
-      return RpcResult.failure(RpcError.network(e.message, e));
-    } catch (e) {
-      return RpcResult.failure(RpcError.network('Unknown error: $e', e));
     }
+    return lastTransportFailure!;
   }
 
   /// Returns the status of the connected RPC node.
@@ -182,15 +238,11 @@ class NearRpcClient {
     required AccountId accountId,
     required BlockReference blockReference,
   }) {
-    return call(
-      'query',
-      {
-        'request_type': 'view_account',
-        'account_id': accountId.toJson(),
-        ...blockReference.toJson(),
-      },
-      AccountView.fromJson,
-    );
+    return call('query', {
+      'request_type': 'view_account',
+      'account_id': accountId.toJson(),
+      ...blockReference.toJson(),
+    }, AccountView.fromJson);
   }
 
   /// Returns access key information for a given public key.
@@ -210,16 +262,12 @@ class NearRpcClient {
     required PublicKey publicKey,
     required BlockReference blockReference,
   }) {
-    return call(
-      'query',
-      {
-        'request_type': 'view_access_key',
-        'account_id': accountId.toJson(),
-        'public_key': publicKey.toJson(),
-        ...blockReference.toJson(),
-      },
-      AccessKeyView.fromJson,
-    );
+    return call('query', {
+      'request_type': 'view_access_key',
+      'account_id': accountId.toJson(),
+      'public_key': publicKey.toJson(),
+      ...blockReference.toJson(),
+    }, AccessKeyView.fromJson);
   }
 
   /// Returns the current gas price.
@@ -234,11 +282,7 @@ class NearRpcClient {
   /// }
   /// ```
   Future<RpcResult<GasPriceResponse>> gasPrice([String? blockId]) {
-    return call(
-      'gas_price',
-      {'block_id': blockId},
-      GasPriceResponse.fromJson,
-    );
+    return call('gas_price', {'block_id': blockId}, GasPriceResponse.fromJson);
   }
 
   /// Calls a view function on a smart contract.
@@ -271,17 +315,13 @@ class NearRpcClient {
         ? base64Encode(utf8.encode(jsonEncode(args)))
         : base64Encode(utf8.encode('{}'));
 
-    return call(
-      'query',
-      {
-        'request_type': 'call_function',
-        'account_id': accountId.toJson(),
-        'method_name': methodName,
-        'args_base64': argsBase64,
-        ...blockReference.toJson(),
-      },
-      CallFunctionResponse.fromJson,
-    );
+    return call('query', {
+      'request_type': 'call_function',
+      'account_id': accountId.toJson(),
+      'method_name': methodName,
+      'args_base64': argsBase64,
+      ...blockReference.toJson(),
+    }, CallFunctionResponse.fromJson);
   }
 
   /// Returns information about validators for a given epoch.
@@ -298,11 +338,44 @@ class NearRpcClient {
   /// ```
   Future<RpcResult<ValidatorsResponse>> validators([Object? blockId]) {
     // NEAR RPC expects [null] for latest epoch or [block_id]
-    return _callRaw(
-      'validators',
-      [blockId],
-      ValidatorsResponse.fromJson,
-    );
+    return _callRaw('validators', [blockId], ValidatorsResponse.fromJson);
+  }
+
+  /// Broadcasts a signed transaction and waits for execution.
+  ///
+  /// Uses the `send_tx` RPC method. By default waits until
+  /// [TxExecutionStatus.executedOptimistic] — the transaction has been
+  /// executed and the result is known, but not yet finalized. Use
+  /// [TxExecutionStatus.final_] to wait for full finality.
+  ///
+  /// Example:
+  /// ```dart
+  /// final signed = await signTransaction(transaction, keyPair);
+  /// final result = await client.sendTransaction(signed);
+  /// if (result.isSuccess) {
+  ///   print('Executed: ${result.getOrNull()!.transaction.hash}');
+  /// }
+  /// ```
+  Future<RpcResult<TransactionResponse>> sendTransaction(
+    SignedTransaction signedTransaction, {
+    TxExecutionStatus waitUntil = TxExecutionStatus.executedOptimistic,
+  }) {
+    return call('send_tx', {
+      'signed_tx_base64': signedTransaction.encodeToBase64(),
+      'wait_until': waitUntil.rpcValue,
+    }, TransactionResponse.fromJson);
+  }
+
+  /// Broadcasts a signed transaction without waiting for execution.
+  ///
+  /// Uses the `broadcast_tx_async` RPC method and returns the transaction
+  /// hash immediately. Query the outcome later with [txStatus].
+  Future<RpcResult<String>> sendTransactionAsync(
+    SignedTransaction signedTransaction,
+  ) {
+    return _callWithFailover('broadcast_tx_async', [
+      signedTransaction.encodeToBase64(),
+    ], (result) => result as String);
   }
 
   /// Returns the status of a transaction.
@@ -320,15 +393,11 @@ class NearRpcClient {
     required String transactionHash,
     required AccountId senderAccountId,
   }) {
-    return call(
-      'tx',
-      {
-        'tx_hash': transactionHash,
-        'sender_account_id': senderAccountId.toJson(),
-        'wait_until': 'EXECUTED',
-      },
-      TransactionResponse.fromJson,
-    );
+    return call('tx', {
+      'tx_hash': transactionHash,
+      'sender_account_id': senderAccountId.toJson(),
+      'wait_until': 'EXECUTED',
+    }, TransactionResponse.fromJson);
   }
 
   /// Returns details of a specific chunk.
@@ -338,11 +407,7 @@ class NearRpcClient {
   /// final result = await client.chunk(chunkHash: 'abc123...');
   /// ```
   Future<RpcResult<ChunkResponse>> chunk({required String chunkHash}) {
-    return call(
-      'chunk',
-      {'chunk_id': chunkHash},
-      ChunkResponse.fromJson,
-    );
+    return call('chunk', {'chunk_id': chunkHash}, ChunkResponse.fromJson);
   }
 
   /// Returns all access keys for an account.
@@ -358,15 +423,11 @@ class NearRpcClient {
     required AccountId accountId,
     required BlockReference blockReference,
   }) {
-    return call(
-      'query',
-      {
-        'request_type': 'view_access_key_list',
-        'account_id': accountId.toJson(),
-        ...blockReference.toJson(),
-      },
-      AccessKeyListResponse.fromJson,
-    );
+    return call('query', {
+      'request_type': 'view_access_key_list',
+      'account_id': accountId.toJson(),
+      ...blockReference.toJson(),
+    }, AccessKeyListResponse.fromJson);
   }
 
   /// Returns the contract code for an account.
@@ -382,15 +443,11 @@ class NearRpcClient {
     required AccountId accountId,
     required BlockReference blockReference,
   }) {
-    return call(
-      'query',
-      {
-        'request_type': 'view_code',
-        'account_id': accountId.toJson(),
-        ...blockReference.toJson(),
-      },
-      ContractCodeResponse.fromJson,
-    );
+    return call('query', {
+      'request_type': 'view_code',
+      'account_id': accountId.toJson(),
+      ...blockReference.toJson(),
+    }, ContractCodeResponse.fromJson);
   }
 
   /// Returns the contract state (key-value pairs) for an account.
@@ -408,16 +465,12 @@ class NearRpcClient {
     String prefixBase64 = '',
     required BlockReference blockReference,
   }) {
-    return call(
-      'query',
-      {
-        'request_type': 'view_state',
-        'account_id': accountId.toJson(),
-        'prefix_base64': prefixBase64,
-        ...blockReference.toJson(),
-      },
-      ContractStateResponse.fromJson,
-    );
+    return call('query', {
+      'request_type': 'view_state',
+      'account_id': accountId.toJson(),
+      'prefix_base64': prefixBase64,
+      ...blockReference.toJson(),
+    }, ContractStateResponse.fromJson);
   }
 
   /// Disposes of the HTTP client.

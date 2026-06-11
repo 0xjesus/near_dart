@@ -60,14 +60,14 @@ class AccountView extends Equatable {
 
   @override
   List<Object?> get props => [
-        amount,
-        locked,
-        codeHash,
-        storageUsage,
-        storagePaidAt,
-        blockHeight,
-        blockHash,
-      ];
+    amount,
+    locked,
+    codeHash,
+    storageUsage,
+    storagePaidAt,
+    blockHeight,
+    blockHash,
+  ];
 }
 
 /// Response from the `query` RPC method when requesting access key information.
@@ -201,10 +201,7 @@ class AccessKeyListResponse extends Equatable {
 /// Information about an access key including its public key.
 @immutable
 class AccessKeyInfoView extends Equatable {
-  const AccessKeyInfoView({
-    required this.publicKey,
-    required this.accessKey,
-  });
+  const AccessKeyInfoView({required this.publicKey, required this.accessKey});
 
   factory AccessKeyInfoView.fromJson(Map<String, dynamic> json) {
     return AccessKeyInfoView(
@@ -228,10 +225,7 @@ class AccessKeyInfoView extends Equatable {
 /// Detailed access key information.
 @immutable
 class AccessKeyDetailView extends Equatable {
-  const AccessKeyDetailView({
-    required this.nonce,
-    required this.permission,
-  });
+  const AccessKeyDetailView({required this.nonce, required this.permission});
 
   factory AccessKeyDetailView.fromJson(Map<String, dynamic> json) {
     return AccessKeyDetailView(
@@ -320,10 +314,7 @@ class ContractStateResponse extends Equatable {
 /// A single key-value pair from contract state.
 @immutable
 class StateItem extends Equatable {
-  const StateItem({
-    required this.key,
-    required this.value,
-  });
+  const StateItem({required this.key, required this.value});
 
   factory StateItem.fromJson(Map<String, dynamic> json) {
     return StateItem(

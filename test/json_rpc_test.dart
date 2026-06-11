@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:test/test.dart';
 import 'package:near_dart/near_dart.dart';
 
@@ -92,11 +91,7 @@ void main() {
     });
 
     test('handles null result correctly', () {
-      final responseJson = {
-        'jsonrpc': '2.0',
-        'id': 'dontcare',
-        'result': null,
-      };
+      final responseJson = {'jsonrpc': '2.0', 'id': 'dontcare', 'result': null};
 
       final response = JsonRpcResponse.fromJson(responseJson);
 
@@ -107,10 +102,7 @@ void main() {
 
   group('JsonRpcError', () {
     test('parses standard JSON-RPC error', () {
-      final errorJson = {
-        'code': -32600,
-        'message': 'Invalid Request',
-      };
+      final errorJson = {'code': -32600, 'message': 'Invalid Request'};
 
       final error = JsonRpcError.fromJson(errorJson);
 
@@ -123,7 +115,9 @@ void main() {
       final errorJson = {
         'code': -32000,
         'message': 'Server error',
-        'data': {'cause': {'name': 'UNKNOWN_ACCOUNT'}},
+        'data': {
+          'cause': {'name': 'UNKNOWN_ACCOUNT'},
+        },
       };
 
       final error = JsonRpcError.fromJson(errorJson);

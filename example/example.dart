@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 import 'package:near_dart/near_dart.dart';
 
 void main() async {
@@ -29,9 +30,7 @@ void main() async {
   final tx = Transaction(
     signerId: AccountId('alice.near'),
     receiverId: AccountId('bob.near'),
-    actions: [
-      TransferAction(deposit: NearToken.fromNear(1)),
-    ],
+    actions: [TransferAction(deposit: NearToken.fromNear(1))],
   );
   print('Transaction: ${tx.toJson()}');
 

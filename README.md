@@ -9,17 +9,20 @@ A type-safe, platform-agnostic SDK for building NEAR Protocol applications with 
 
 ## Features
 
-- **RPC Client**: Query blockchain state, accounts, contracts, and validators
+- **Local Signing & Sending**: ed25519 key pairs, Borsh serialization, `send_tx` broadcasting — byte-for-byte compatible with near-api-js
+- **High-Level `Account` API**: `transfer()` / `callFunction()` in one call (nonce + block hash resolved automatically)
+- **RPC Client**: Query blockchain state, accounts, contracts, and validators — FastNear endpoints by default, automatic failover
 - **Wallet Integration**: Connect wallets via WalletConnect or deep links
 - **Type-Safe Primitives**: `AccountId`, `NearToken`, `PublicKey`, `CryptoHash`
-- **Transaction Building**: Construct and sign transactions with multiple actions
+- **Transaction Building**: All NEAR actions, including NEP-591 Global Contracts
 - **NEP-413 Support**: Message signing for authentication
+- **Tested against the real chain**: every release runs a real sign-and-send E2E on testnet
 
 ## Installation
 
 ```yaml
 dependencies:
-  near_dart: ^0.1.0
+  near_dart: ^0.2.0
 ```
 
 ## Quick Start
@@ -55,6 +58,68 @@ void main() async {
   client.close();
 }
 ```
+
+
+## Sign & Send Transactions (local keys)
+
+The fastest way to execute transactions — no wallet redirect needed:
+
+```dart
+import 'package:near_dart/near_dart.dart';
+
+void main() async {
+  final client = NearRpcClient.testnet();
+
+  final account = Account(
+    accountId: AccountId('alice.testnet'),
+    keyPair: await KeyPairEd25519.fromString('ed25519:<your secret key>'),
+    client: client,
+  );
+
+  // Transfer NEAR
+  final result = await account.transfer(
+    receiverId: AccountId('bob.testnet'),
+    amount: NearToken.fromNear(1),
+  );
+
+  switch (result) {
+    case RpcSuccess(:final value):
+      print('Executed! https://testnet.nearblocks.io/txns/${value.transaction.hash}');
+    case RpcFailure(:final error):
+      print('Failed: ${error.message}');
+  }
+
+  // Call a contract method that changes state
+  await account.callFunction(
+    contractId: AccountId('wrap.testnet'),
+    methodName: 'near_deposit',
+    deposit: NearToken.fromNear(1),
+  );
+
+  client.close();
+}
+```
+
+Need lower-level control? Sign and broadcast manually:
+
+```dart
+final signed = await signTransaction(
+  Transaction(
+    signerId: AccountId('alice.testnet'),
+    receiverId: AccountId('bob.testnet'),
+    nonce: nonce,                 // access key nonce + 1
+    blockHash: recentBlockHash,   // from viewAccessKey or block()
+    actions: [TransferAction(deposit: NearToken.fromNear(1))],
+  ),
+  keyPair,
+);
+print(signed.hash);               // transaction hash (base58)
+await client.sendTransaction(signed, waitUntil: TxExecutionStatus.final_);
+```
+
+Serialization and signatures are validated byte-for-byte against
+canonical near-api-js vectors, and the full pipeline runs end-to-end
+against real testnet in CI.
 
 ## RPC Client
 
