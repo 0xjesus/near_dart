@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -61,6 +62,7 @@ class NearRpcClient {
   NearRpcClient({
     required this.rpcUrl,
     this.fallbackUrls = const [],
+    this.timeout = const Duration(seconds: 30),
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
 
@@ -69,10 +71,14 @@ class NearRpcClient {
   /// Defaults to FastNear's free tier. The legacy `rpc.testnet.near.org`
   /// endpoint (deprecated in 2025, severely rate limited) is kept as a
   /// fallback only.
-  factory NearRpcClient.testnet({http.Client? httpClient}) {
+  factory NearRpcClient.testnet({
+    http.Client? httpClient,
+    Duration timeout = const Duration(seconds: 30),
+  }) {
     return NearRpcClient(
       rpcUrl: 'https://test.rpc.fastnear.com',
       fallbackUrls: const ['https://rpc.testnet.near.org'],
+      timeout: timeout,
       httpClient: httpClient,
     );
   }
@@ -82,10 +88,14 @@ class NearRpcClient {
   /// Defaults to FastNear's free tier. The legacy `rpc.mainnet.near.org`
   /// endpoint (deprecated in 2025, severely rate limited) is kept as a
   /// fallback only.
-  factory NearRpcClient.mainnet({http.Client? httpClient}) {
+  factory NearRpcClient.mainnet({
+    http.Client? httpClient,
+    Duration timeout = const Duration(seconds: 30),
+  }) {
     return NearRpcClient(
       rpcUrl: 'https://free.rpc.fastnear.com',
       fallbackUrls: const ['https://rpc.mainnet.near.org'],
+      timeout: timeout,
       httpClient: httpClient,
     );
   }
@@ -95,6 +105,10 @@ class NearRpcClient {
 
   /// Fallback RPC endpoints, tried in order on transport-level failures.
   final List<String> fallbackUrls;
+
+  /// Per-request timeout. A request exceeding this is treated as a
+  /// transport failure (`RpcError.timeout`) and triggers failover.
+  final Duration timeout;
 
   final http.Client _httpClient;
 
@@ -142,11 +156,13 @@ class NearRpcClient {
     RpcResult<T>? lastTransportFailure;
     for (final url in [rpcUrl, ...fallbackUrls]) {
       try {
-        final response = await _httpClient.post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: body,
-        );
+        final response = await _httpClient
+            .post(
+              Uri.parse(url),
+              headers: {'Content-Type': 'application/json'},
+              body: body,
+            )
+            .timeout(timeout);
 
         if (response.statusCode != 200) {
           // Rate limits and server outages: try the next endpoint.
@@ -167,6 +183,11 @@ class NearRpcClient {
         }
 
         return RpcResult.success(parser(rpcResponse.result));
+      } on TimeoutException {
+        // A stalled node is a transport failure: try the next endpoint.
+        lastTransportFailure = RpcResult.failure(
+          RpcError.timeout('Request to $url timed out after $timeout'),
+        );
       } on FormatException catch (e) {
         return RpcResult.failure(RpcError.parse('Failed to parse response', e));
       } on http.ClientException catch (e) {
