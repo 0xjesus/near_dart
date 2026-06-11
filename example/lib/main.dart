@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart' hide Action;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:near_dart/near_dart.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -169,6 +170,20 @@ class _NearSdkDemoState extends State<NearSdkDemo> {
               ),
             ),
           ),
+          // Constrain content to a phone-width column, centered, so the app
+          // looks right on wide desktop/web screens instead of stretching
+          // edge-to-edge.
+          builder: (context, child) {
+            return ColoredBox(
+              color: const Color(0xFFE5E7EB),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              ),
+            );
+          },
           home: HomePage(appState: _appState),
         );
       },
@@ -211,6 +226,16 @@ class HomePage extends StatelessWidget {
               style: TextStyle(color: NearTheme.grey, fontSize: 14),
             ),
             const SizedBox(height: 24),
+
+            // Local Signing - Featured (works fully on web!)
+            _FeatureCard(
+              icon: Icons.bolt,
+              title: 'Sign & Send (local key)',
+              subtitle: 'Generate a key, fund via faucet, send a real transfer',
+              onTap: () => _push(context, LocalSigningPage(appState: appState)),
+              featured: true,
+            ),
+            const SizedBox(height: 8),
 
             // Wallet Connection - Featured
             _FeatureCard(
@@ -646,6 +671,333 @@ class _ErrorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// ============================================================================
+// 0. LOCAL SIGNING PAGE — generate key, fund via faucet, sign & send.
+//    This is the flagship demo: the whole flow runs locally (incl. on web),
+//    no external wallet redirect needed.
+// ============================================================================
+class LocalSigningPage extends StatefulWidget {
+  final AppState appState;
+
+  const LocalSigningPage({super.key, required this.appState});
+
+  @override
+  State<LocalSigningPage> createState() => _LocalSigningPageState();
+}
+
+class _LocalSigningPageState extends State<LocalSigningPage> {
+  final _accountCtrl = TextEditingController();
+  final _secretCtrl = TextEditingController();
+  final _receiverCtrl = TextEditingController(text: 'testnet');
+  final _amountCtrl = TextEditingController(text: '0.001');
+
+  KeyPairEd25519? _keyPair;
+  bool _busy = false;
+  String? _status;
+  String? _error;
+  Map<String, dynamic>? _result;
+  String? _txHash;
+
+  @override
+  void dispose() {
+    _accountCtrl.dispose();
+    _secretCtrl.dispose();
+    _receiverCtrl.dispose();
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _isTestnet => widget.appState.network == Network.testnet;
+
+  void _set({bool? busy, String? status, String? error}) {
+    setState(() {
+      if (busy != null) _busy = busy;
+      _status = status;
+      _error = error;
+    });
+  }
+
+  Future<void> _generateKey() async {
+    _set(busy: true, status: 'Generating ed25519 key pair…');
+    try {
+      final kp = await KeyPairEd25519.generate();
+      setState(() {
+        _keyPair = kp;
+        _secretCtrl.text = kp.toString();
+      });
+      _set(busy: false, status: 'Key generated. Now create a funded account.');
+    } catch (e) {
+      _set(busy: false, error: '$e');
+    }
+  }
+
+  Future<void> _createFaucetAccount() async {
+    final kp = _keyPair;
+    if (kp == null) {
+      _set(error: 'Generate a key first.');
+      return;
+    }
+    _set(busy: true, status: 'Requesting a funded testnet account…');
+    try {
+      final accountId =
+          'near-dart-demo-${DateTime.now().millisecondsSinceEpoch}.testnet';
+      final response = await http.post(
+        Uri.parse('https://helper.testnet.near.org/account'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'newAccountId': accountId,
+          'newAccountPublicKey': kp.publicKey.value,
+        }),
+      );
+      if (response.statusCode != 200) {
+        _set(busy: false, error: 'Faucet failed (HTTP ${response.statusCode})');
+        return;
+      }
+      _accountCtrl.text = accountId;
+
+      // The faucet account is only optimistically executed; wait until its
+      // access key is final-queryable so the next Sign & Send won't race.
+      _set(busy: true, status: 'Account created — waiting for it to be ready…');
+      var ready = false;
+      for (var i = 0; i < 15; i++) {
+        final check = await widget.appState.client.viewAccessKey(
+          accountId: AccountId(accountId),
+          publicKey: kp.publicKey,
+          blockReference: BlockReference.finality(Finality.final_),
+        );
+        if (check.isSuccess) {
+          ready = true;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+      }
+      _set(
+        busy: false,
+        status: ready
+            ? 'Funded $accountId is ready. Sign & send now.'
+            : 'Account created but not visible yet — try Sign & Send shortly.',
+      );
+    } catch (e) {
+      _set(busy: false, error: '$e');
+    }
+  }
+
+  Future<void> _signAndSend() async {
+    final accountId = _accountCtrl.text.trim();
+    final secret = _secretCtrl.text.trim();
+    final receiver = _receiverCtrl.text.trim();
+    final amount = _amountCtrl.text.trim();
+    if (accountId.isEmpty || secret.isEmpty || receiver.isEmpty) {
+      _set(error: 'Account, secret key and receiver are required.');
+      return;
+    }
+    setState(() {
+      _result = null;
+      _txHash = null;
+    });
+    _set(busy: true, status: 'Signing locally and broadcasting via send_tx…');
+    try {
+      final keyPair = await KeyPairEd25519.fromString(secret);
+      final account = Account(
+        accountId: AccountId(accountId),
+        keyPair: keyPair,
+        client: widget.appState.client,
+      );
+      final result = await account.transfer(
+        receiverId: AccountId(receiver),
+        amount: NearToken.parse(amount),
+      );
+
+      switch (result) {
+        case RpcSuccess(:final value):
+          setState(() {
+            _txHash = value.transaction.hash;
+            _result = {
+              'status': _statusLabel(value.status),
+              'tx_hash': value.transaction.hash,
+              'signer': value.transaction.signerId,
+              'gas_burnt': value.transactionOutcome.outcome.gasBurnt,
+            };
+          });
+          _set(busy: false, status: 'Executed on-chain ✓');
+        case RpcFailure(:final error):
+          _set(busy: false, error: 'send_tx failed: ${error.message}');
+      }
+    } catch (e) {
+      _set(busy: false, error: '$e');
+    }
+  }
+
+  // Don't use runtimeType.toString() — it returns minified garbage like
+  // "minified:anL" in release/web builds. Match the sealed type instead.
+  String _statusLabel(TransactionStatus s) => switch (s) {
+    TransactionStatusSuccess() => 'Success',
+    TransactionStatusSuccessReceipt() => 'Success (receipt pending)',
+    TransactionStatusFailure() => 'Failure',
+    TransactionStatusUnknown() => 'Unknown',
+  };
+
+  Future<void> _openExplorer() async {
+    final hash = _txHash;
+    if (hash == null) return;
+    final base = _isTestnet
+        ? 'https://testnet.nearblocks.io'
+        : 'https://nearblocks.io';
+    await launchUrl(
+      Uri.parse('$base/txns/$hash'),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _BasePage(
+      title: 'Sign & Send',
+      appState: widget.appState,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'The full flow runs locally — key generation, Borsh '
+            'serialization, ed25519 signing and broadcasting. No wallet '
+            'redirect. Works on web, mobile and desktop.',
+            style: TextStyle(color: NearTheme.grey, fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+
+          _stepLabel('1', 'Generate a key pair'),
+          const SizedBox(height: 8),
+          _LoadButton(
+            label: 'Generate ed25519 key',
+            isLoading: _busy,
+            onPressed: _generateKey,
+          ),
+          if (_keyPair != null) ...[
+            const SizedBox(height: 8),
+            _ResultCard(
+              title: 'Key pair',
+              data: {
+                'public_key': _keyPair!.publicKey.value,
+                'secret_key': '${_keyPair!.toString().substring(0, 20)}…',
+              },
+            ),
+          ],
+          const SizedBox(height: 20),
+
+          _stepLabel('2', 'Get a funded account'),
+          const SizedBox(height: 8),
+          if (_isTestnet)
+            _LoadButton(
+              label: 'Create funded testnet account (faucet)',
+              isLoading: _busy,
+              onPressed: _createFaucetAccount,
+            )
+          else
+            Text(
+              'Faucet is testnet-only. On mainnet, import an existing '
+              'account + secret key below.',
+              style: TextStyle(color: NearTheme.grey, fontSize: 12),
+            ),
+          const SizedBox(height: 12),
+          _field(_accountCtrl, 'Account ID', 'alice.testnet'),
+          const SizedBox(height: 8),
+          _field(_secretCtrl, 'Secret key', 'ed25519:…', mono: true),
+          const SizedBox(height: 20),
+
+          _stepLabel('3', 'Sign & send a transfer'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _field(_receiverCtrl, 'Receiver', 'bob.testnet'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _field(_amountCtrl, 'NEAR', '0.001', number: true),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _LoadButton(
+            label: 'Sign & Send',
+            isLoading: _busy,
+            onPressed: _signAndSend,
+          ),
+
+          if (_status != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              _status!,
+              style: TextStyle(
+                color: NearTheme.greyDark,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            _ErrorCard(message: _error!),
+          ],
+          if (_result != null) ...[
+            const SizedBox(height: 12),
+            _ResultCard(title: 'Transaction result', data: _result!),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _openExplorer,
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('View on explorer'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _stepLabel(String n, String text) => Row(
+    children: [
+      CircleAvatar(
+        radius: 12,
+        backgroundColor: NearTheme.green,
+        child: Text(
+          n,
+          style: const TextStyle(
+            color: NearTheme.black,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+      ),
+    ],
+  );
+
+  Widget _field(
+    TextEditingController ctrl,
+    String label,
+    String hint, {
+    bool mono = false,
+    bool number = false,
+  }) => TextField(
+    controller: ctrl,
+    keyboardType: number
+        ? const TextInputType.numberWithOptions(decimal: true)
+        : TextInputType.text,
+    style: TextStyle(fontSize: 13, fontFamily: mono ? 'monospace' : null),
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: hint,
+      isDense: true,
+      border: const OutlineInputBorder(),
+    ),
+  );
 }
 
 // ============================================================================
