@@ -205,30 +205,44 @@ DeleteKeyAction(publicKey: key)
 DeleteAccountAction(beneficiaryId: AccountId('beneficiary.near'))
 ```
 
-### MyNearWallet Integration
+### MyNearWallet Integration (connect once, then sign locally)
+
+`signIn()` generates a **function-call key**, redirects to MyNearWallet to
+provision it, and `completeSignIn()` stores the private key — so afterward
+you call contracts **locally, with no more redirects**.
 
 ```dart
 final adapter = MyNearWalletAdapter(
   config: MyNearWalletConfig(
     contractId: AccountId('app.near'),
-    successUrl: 'myapp://callback/success',
+    successUrl: 'myapp://callback/success',   // https URL on web
     failureUrl: 'myapp://callback/failure',
     network: MyNearWalletNetwork.mainnet,
   ),
-  launchUrl: (uri) async {
-    // Use url_launcher package
-    return await launchUrl(uri, mode: LaunchMode.externalApplication);
-  },
+  // Persist keys across the redirect/restarts (see the example app's
+  // SharedPrefsKeyStore). Defaults to InMemoryKeyStore.
+  keyStore: myPersistentKeyStore,
+  launchUrl: (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
 );
 
-// Sign in
+// 1. Connect: generates a key and redirects to the wallet.
 await adapter.signIn(contractId: AccountId('app.near'));
 
-// Handle callback in your app
-final callback = adapter.handleCallback(callbackUri);
-if (callback.isSuccess) {
-  print('Connected: ${callback.accountId}');
-}
+// 2. When the wallet redirects back (deep link on mobile, app URL on web):
+final account = await adapter.completeSignIn(callbackUri);
+print('Connected: ${account?.accountId}');
+
+// 3. From now on, sign contract calls locally — no redirect:
+final near = Account(
+  accountId: account!.accountId,
+  keyPair: (await adapter.keyFor(account.accountId))!,
+  client: NearRpcClient.mainnet(),
+);
+await near.callFunction(
+  contractId: AccountId('app.near'),
+  methodName: 'set_greeting',
+  args: {'greeting': 'hola'},
+);
 ```
 
 ## Type-Safe Primitives
