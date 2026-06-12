@@ -135,13 +135,20 @@ void main() {
       expect(result.isFailure, isTrue);
     });
 
-    test('viewAccessKeyList returns error for non-existent account', () async {
+    test('viewAccessKeyList yields no keys for non-existent account', () async {
       final result = await client.viewAccessKeyList(
         accountId: NonExistentAccounts.testnetNonExistent,
         blockReference: BlockReference.finality(Finality.final_),
       );
 
-      expect(result.isFailure, isTrue);
+      // Provider behavior differs: legacy nodes return UNKNOWN_ACCOUNT,
+      // while FastNear returns success with an empty key list. Both
+      // correctly express "this account has no keys".
+      if (result.isSuccess) {
+        expect(result.getOrThrow().keys, isEmpty);
+      } else {
+        expect(result.isFailure, isTrue);
+      }
     });
   });
 
