@@ -7,6 +7,8 @@ import 'package:near_dart/near_dart.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import 'connect_wallet_page.dart';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const NearSdkDemo());
@@ -248,14 +250,31 @@ class HomePage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            // Wallet Connection - Featured
+            // Wallet Connection - Featured (redirect flow, works on web)
             _FeatureCard(
               icon: Icons.account_balance_wallet,
-              title: 'Wallet Connect',
-              subtitle: 'Connect to MyNearWallet & sign transactions',
+              title: 'Connect Wallet (MyNearWallet)',
+              subtitle: 'Redirect connect + provision a key, then sign locally',
+              onTap: () => _push(
+                context,
+                ConnectWalletPage(
+                  isTestnet: appState.network == Network.testnet,
+                  contractId: appState.network == Network.testnet
+                      ? 'guestbook.near-examples.testnet'
+                      : 'social.near',
+                ),
+              ),
+              featured: true,
+            ),
+            const SizedBox(height: 8),
+
+            // Legacy embedded-WebView flow (mobile only — broken on web)
+            _FeatureCard(
+              icon: Icons.web,
+              title: 'Wallet Connect (legacy WebView)',
+              subtitle: 'Embedded WebView flow — mobile only',
               onTap: () =>
                   _push(context, WalletConnectPage(appState: appState)),
-              featured: true,
             ),
             const SizedBox(height: 8),
 
