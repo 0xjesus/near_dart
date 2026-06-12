@@ -16,7 +16,7 @@ jobs:
           sdk: stable
 
       - name: Install dependencies
-        run: dart pub get
+        run: dart pub get --no-example
 
       - name: Publish near_jsonrpc_types
         run: |
@@ -37,7 +37,7 @@ jobs:
           sdk: stable
 
       - name: Install dependencies
-        run: dart pub get
+        run: dart pub get --no-example
 
       - name: Publish near_jsonrpc_client
         run: |
