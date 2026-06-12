@@ -51,23 +51,20 @@ class StatusResponse extends Equatable {
 
   @override
   List<Object?> get props => [
-        version,
-        chainId,
-        protocolVersion,
-        latestProtocolVersion,
-        rpcAddr,
-        syncInfo,
-        validatorAccountId,
-      ];
+    version,
+    chainId,
+    protocolVersion,
+    latestProtocolVersion,
+    rpcAddr,
+    syncInfo,
+    validatorAccountId,
+  ];
 }
 
 /// Version information for the NEAR node.
 @immutable
 class VersionInfo extends Equatable {
-  const VersionInfo({
-    required this.version,
-    this.build,
-  });
+  const VersionInfo({required this.version, this.build});
 
   factory VersionInfo.fromJson(Map<String, dynamic> json) {
     return VersionInfo(
@@ -139,13 +136,13 @@ class SyncInfo extends Equatable {
 
   @override
   List<Object?> get props => [
-        latestBlockHash,
-        latestBlockHeight,
-        latestStateRoot,
-        latestBlockTime,
-        syncing,
-        earliestBlockHash,
-        earliestBlockHeight,
-        earliestBlockTime,
-      ];
+    latestBlockHash,
+    latestBlockHeight,
+    latestStateRoot,
+    latestBlockTime,
+    syncing,
+    earliestBlockHash,
+    earliestBlockHeight,
+    earliestBlockTime,
+  ];
 }

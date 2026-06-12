@@ -1,0 +1,9 @@
+tags:
+  # Tests that hit real networks. Excluded from default/PR runs with
+  # `dart test --exclude-tags integration`.
+  integration:
+  testnet:
+  mainnet:
+  e2e:
+  platform:
+  web:

@@ -17,14 +17,16 @@ class TransactionResponse extends Equatable {
   factory TransactionResponse.fromJson(Map<String, dynamic> json) {
     return TransactionResponse(
       status: TransactionStatus.fromJson(json['status']),
-      transaction:
-          TransactionView.fromJson(json['transaction'] as Map<String, dynamic>),
+      transaction: TransactionView.fromJson(
+        json['transaction'] as Map<String, dynamic>,
+      ),
       transactionOutcome: ExecutionOutcomeWithId.fromJson(
         json['transaction_outcome'] as Map<String, dynamic>,
       ),
       receiptsOutcome: (json['receipts_outcome'] as List<dynamic>)
-          .map((e) =>
-              ExecutionOutcomeWithId.fromJson(e as Map<String, dynamic>))
+          .map(
+            (e) => ExecutionOutcomeWithId.fromJson(e as Map<String, dynamic>),
+          )
           .toList(),
     );
   }
@@ -43,11 +45,11 @@ class TransactionResponse extends Equatable {
 
   @override
   List<Object?> get props => [
-        status,
-        transaction,
-        transactionOutcome,
-        receiptsOutcome,
-      ];
+    status,
+    transaction,
+    transactionOutcome,
+    receiptsOutcome,
+  ];
 }
 
 /// The status of a transaction.
@@ -166,13 +168,13 @@ class TransactionView extends Equatable {
 
   @override
   List<Object?> get props => [
-        signerId,
-        publicKey,
-        nonce,
-        receiverId,
-        hash,
-        actions,
-      ];
+    signerId,
+    publicKey,
+    nonce,
+    receiverId,
+    hash,
+    actions,
+  ];
 }
 
 /// Execution outcome with its ID.
@@ -187,8 +189,9 @@ class ExecutionOutcomeWithId extends Equatable {
   factory ExecutionOutcomeWithId.fromJson(Map<String, dynamic> json) {
     return ExecutionOutcomeWithId(
       id: json['id'] as String,
-      outcome:
-          ExecutionOutcome.fromJson(json['outcome'] as Map<String, dynamic>),
+      outcome: ExecutionOutcome.fromJson(
+        json['outcome'] as Map<String, dynamic>,
+      ),
       blockHash: json['block_hash'] as String?,
     );
   }
@@ -251,11 +254,11 @@ class ExecutionOutcome extends Equatable {
 
   @override
   List<Object?> get props => [
-        logs,
-        receiptIds,
-        gasBurnt,
-        tokensBurnt,
-        executorId,
-        status,
-      ];
+    logs,
+    receiptIds,
+    gasBurnt,
+    tokensBurnt,
+    executorId,
+    status,
+  ];
 }

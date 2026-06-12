@@ -1,48 +1,27 @@
+/// Tests for transaction signing and execution outcome types.
+///
+/// Pure unit tests - no mocks, no network required.
+library;
+
 import 'package:test/test.dart';
-import 'package:mocktail/mocktail.dart';
 import 'package:near_dart/near_dart.dart';
-import 'package:near_dart/near_dart.dart';
-
-class MockWalletAdapter extends Mock implements WalletAdapter {}
-
-class FakeTransaction extends Fake implements Transaction {}
 
 void main() {
-  setUpAll(() {
-    registerFallbackValue(FakeTransaction());
-  });
-
-  group('signAndSendTransaction', () {
-    late MockWalletAdapter adapter;
-
-    setUp(() {
-      adapter = MockWalletAdapter();
-    });
-
-    test('signs and sends transfer transaction', () async {
+  group('Transaction', () {
+    test('creates transfer transaction', () {
       final tx = Transaction(
         signerId: AccountId('alice.near'),
         receiverId: AccountId('bob.near'),
         actions: [TransferAction(deposit: NearToken.fromNear(1))],
       );
 
-      when(() => adapter.signAndSendTransaction(
-        transaction: any(named: 'transaction'),
-      )).thenAnswer((_) async => TransactionResult(
-        transactionHash: CryptoHash('abc123'),
-        outcome: ExecutionOutcome(
-          status: ExecutionStatus.successValue(''),
-          gasBurnt: BigInt.from(1000000000000),
-        ),
-      ));
-
-      final result = await adapter.signAndSendTransaction(transaction: tx);
-
-      expect(result.transactionHash.value, equals('abc123'));
-      expect(result.outcome.status, isA<ExecutionStatusSuccessValue>());
+      expect(tx.signerId.value, equals('alice.near'));
+      expect(tx.receiverId.value, equals('bob.near'));
+      expect(tx.actions.length, equals(1));
+      expect(tx.actions.first, isA<TransferAction>());
     });
 
-    test('signs and sends function call transaction', () async {
+    test('creates function call transaction', () {
       final tx = Transaction(
         signerId: AccountId('alice.near'),
         receiverId: AccountId('contract.near'),
@@ -55,95 +34,51 @@ void main() {
         ],
       );
 
-      when(() => adapter.signAndSendTransaction(
-        transaction: any(named: 'transaction'),
-      )).thenAnswer((_) async => TransactionResult(
-        transactionHash: CryptoHash('def456'),
-        outcome: ExecutionOutcome(
-          status: ExecutionStatus.successReceiptIds(['receipt1']),
-          gasBurnt: BigInt.from(5000000000000),
-        ),
-      ));
-
-      final result = await adapter.signAndSendTransaction(transaction: tx);
-
-      expect(result.transactionHash.value, equals('def456'));
+      expect(tx.receiverId.value, equals('contract.near'));
+      final action = tx.actions.first as FunctionCallAction;
+      expect(action.methodName, equals('ft_transfer'));
     });
 
-    test('handles transaction failure', () async {
+    test('creates multi-action transaction', () {
       final tx = Transaction(
         signerId: AccountId('alice.near'),
         receiverId: AccountId('bob.near'),
-        actions: [TransferAction(deposit: NearToken.fromNear(1000000))],
+        actions: [
+          TransferAction(deposit: NearToken.fromNear(1)),
+          TransferAction(deposit: NearToken.fromNear(2)),
+        ],
       );
 
-      when(() => adapter.signAndSendTransaction(
-        transaction: any(named: 'transaction'),
-      )).thenAnswer((_) async => TransactionResult(
-        transactionHash: CryptoHash('failed123'),
-        outcome: ExecutionOutcome(
-          status: ExecutionStatus.failure(
-            ExecutionError(errorType: 'NotEnoughBalance', errorMessage: 'Insufficient funds'),
-          ),
-          gasBurnt: BigInt.from(1000000000000),
-        ),
-      ));
-
-      final result = await adapter.signAndSendTransaction(transaction: tx);
-
-      expect(result.outcome.status, isA<ExecutionStatusFailure>());
-      final failure = result.outcome.status as ExecutionStatusFailure;
-      expect(failure.error.errorType, equals('NotEnoughBalance'));
-    });
-  });
-
-  group('signAndSendTransactions', () {
-    late MockWalletAdapter adapter;
-
-    setUp(() {
-      adapter = MockWalletAdapter();
+      expect(tx.actions.length, equals(2));
     });
 
-    test('signs and sends multiple transactions', () async {
-      final transactions = [
-        Transaction(
-          signerId: AccountId('alice.near'),
-          receiverId: AccountId('bob.near'),
-          actions: [TransferAction(deposit: NearToken.fromNear(1))],
-        ),
-        Transaction(
-          signerId: AccountId('alice.near'),
-          receiverId: AccountId('carol.near'),
-          actions: [TransferAction(deposit: NearToken.fromNear(2))],
-        ),
-      ];
-
-      when(() => adapter.signAndSendTransactions(
-        transactions: any(named: 'transactions'),
-      )).thenAnswer((_) async => [
-        TransactionResult(
-          transactionHash: CryptoHash('tx1'),
-          outcome: ExecutionOutcome(
-            status: ExecutionStatus.successValue(''),
-            gasBurnt: BigInt.from(1000000000000),
-          ),
-        ),
-        TransactionResult(
-          transactionHash: CryptoHash('tx2'),
-          outcome: ExecutionOutcome(
-            status: ExecutionStatus.successValue(''),
-            gasBurnt: BigInt.from(1000000000000),
-          ),
-        ),
-      ]);
-
-      final results = await adapter.signAndSendTransactions(
-        transactions: transactions,
+    test('serializes to JSON correctly', () {
+      final tx = Transaction(
+        signerId: AccountId('alice.near'),
+        receiverId: AccountId('bob.near'),
+        actions: [TransferAction(deposit: NearToken.fromNear(1))],
       );
 
-      expect(results, hasLength(2));
-      expect(results[0].transactionHash.value, equals('tx1'));
-      expect(results[1].transactionHash.value, equals('tx2'));
+      final json = tx.toJson();
+      expect(json['signerId'], equals('alice.near'));
+      expect(json['receiverId'], equals('bob.near'));
+      expect(json['actions'], isA<List>());
+    });
+
+    test('equality works correctly', () {
+      final tx1 = Transaction(
+        signerId: AccountId('alice.near'),
+        receiverId: AccountId('bob.near'),
+        actions: [TransferAction(deposit: NearToken.fromNear(1))],
+      );
+
+      final tx2 = Transaction(
+        signerId: AccountId('alice.near'),
+        receiverId: AccountId('bob.near'),
+        actions: [TransferAction(deposit: NearToken.fromNear(1))],
+      );
+
+      expect(tx1, equals(tx2));
     });
   });
 
@@ -172,7 +107,7 @@ void main() {
     test('creates failure outcome', () {
       final outcome = ExecutionOutcome(
         status: ExecutionStatus.failure(
-          ExecutionError(
+          const ExecutionError(
             errorType: 'ActionError',
             errorMessage: 'Account does not exist',
           ),
@@ -182,12 +117,45 @@ void main() {
 
       expect(outcome.status, isA<ExecutionStatusFailure>());
     });
+
+    test('includes logs', () {
+      final outcome = ExecutionOutcome(
+        status: ExecutionStatus.successValue(''),
+        gasBurnt: BigInt.zero,
+        logs: ['Log entry 1', 'Log entry 2'],
+      );
+
+      expect(outcome.logs, hasLength(2));
+    });
+
+    test('includes receipt IDs', () {
+      final outcome = ExecutionOutcome(
+        status: ExecutionStatus.successValue(''),
+        gasBurnt: BigInt.zero,
+        receiptIds: ['receipt1', 'receipt2'],
+      );
+
+      expect(outcome.receiptIds, hasLength(2));
+    });
   });
 
   group('TransactionResult', () {
+    test('creates with hash and outcome', () {
+      final result = TransactionResult(
+        transactionHash: const CryptoHash('abc123'),
+        outcome: ExecutionOutcome(
+          status: ExecutionStatus.successValue(''),
+          gasBurnt: BigInt.from(2500000000000),
+        ),
+      );
+
+      expect(result.transactionHash.value, equals('abc123'));
+      expect(result.outcome.status, isA<ExecutionStatusSuccessValue>());
+    });
+
     test('serializes to JSON correctly', () {
       final result = TransactionResult(
-        transactionHash: CryptoHash('abc123'),
+        transactionHash: const CryptoHash('abc123'),
         outcome: ExecutionOutcome(
           status: ExecutionStatus.successValue(''),
           gasBurnt: BigInt.from(2500000000000),
@@ -201,7 +169,7 @@ void main() {
 
     test('value equality works', () {
       final result1 = TransactionResult(
-        transactionHash: CryptoHash('abc123'),
+        transactionHash: const CryptoHash('abc123'),
         outcome: ExecutionOutcome(
           status: ExecutionStatus.successValue(''),
           gasBurnt: BigInt.from(1000),
@@ -209,7 +177,7 @@ void main() {
       );
 
       final result2 = TransactionResult(
-        transactionHash: CryptoHash('abc123'),
+        transactionHash: const CryptoHash('abc123'),
         outcome: ExecutionOutcome(
           status: ExecutionStatus.successValue(''),
           gasBurnt: BigInt.from(1000),
@@ -217,6 +185,29 @@ void main() {
       );
 
       expect(result1, equals(result2));
+    });
+  });
+
+  group('ExecutionError', () {
+    test('creates with type and message', () {
+      const error = ExecutionError(
+        errorType: 'NotEnoughBalance',
+        errorMessage: 'Insufficient funds for transfer',
+      );
+
+      expect(error.errorType, equals('NotEnoughBalance'));
+      expect(error.errorMessage, equals('Insufficient funds for transfer'));
+    });
+
+    test('serializes to JSON', () {
+      const error = ExecutionError(
+        errorType: 'TestError',
+        errorMessage: 'Test message',
+      );
+
+      final json = error.toJson();
+      expect(json['error_type'], equals('TestError'));
+      expect(json['error_message'], equals('Test message'));
     });
   });
 }

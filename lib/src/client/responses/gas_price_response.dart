@@ -6,9 +6,7 @@ import 'package:meta/meta.dart';
 /// Contains the gas price at a specific block.
 @immutable
 class GasPriceResponse extends Equatable {
-  const GasPriceResponse({
-    required this.gasPrice,
-  });
+  const GasPriceResponse({required this.gasPrice});
 
   factory GasPriceResponse.fromJson(Map<String, dynamic> json) {
     return GasPriceResponse(

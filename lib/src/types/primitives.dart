@@ -117,21 +117,105 @@ class NearToken extends Equatable {
 
   /// Creates a NearToken from NEAR amount (whole number only).
   ///
-  /// For fractional amounts, use [fromYocto] directly with the precise
-  /// yoctoNEAR value to avoid floating-point precision issues.
+  /// For fractional amounts, use [NearToken.parse] (exact) or [fromYocto]
+  /// directly with the precise yoctoNEAR value.
   factory NearToken.fromNear(int near) {
-    // 1 NEAR = 10^24 yoctoNEAR
-    final oneNear = BigInt.parse('1000000000000000000000000');
-    return NearToken._(BigInt.from(near) * oneNear);
+    return NearToken._(BigInt.from(near) * _yoctoPerNear);
   }
+
+  /// Parses a decimal NEAR amount string into an exact yoctoNEAR value.
+  ///
+  /// Unlike floating-point conversion, this is precise for any magnitude.
+  ///
+  /// ```dart
+  /// NearToken.parse('1.5').yoctoNear; // 1500000000000000000000000
+  /// ```
+  ///
+  /// Throws [FormatException] for non-numeric input, negative amounts, or
+  /// more than 24 fractional digits (finer than one yoctoNEAR).
+  factory NearToken.parse(String near) {
+    final match = RegExp(r'^(\d+)(?:\.(\d+))?$').firstMatch(near);
+    if (match == null) {
+      throw FormatException('Invalid NEAR amount', near);
+    }
+    final whole = match.group(1)!;
+    final fraction = match.group(2) ?? '';
+    if (fraction.length > 24) {
+      throw FormatException(
+        'NEAR amount has more than 24 fractional digits (sub-yoctoNEAR)',
+        near,
+      );
+    }
+    final paddedFraction = fraction.padRight(24, '0');
+    return NearToken._(
+      BigInt.parse(whole) * _yoctoPerNear + BigInt.parse(paddedFraction),
+    );
+  }
+
+  static final BigInt _yoctoPerNear = BigInt.parse('1000000000000000000000000');
 
   /// The amount in yoctoNEAR.
   final BigInt yoctoNear;
 
-  /// Converts to NEAR (may lose precision for very large amounts).
+  /// Converts to NEAR as a `double` (may lose precision for large amounts).
+  ///
+  /// For exact, display-safe output use [toNearString].
   double toNear() {
-    return yoctoNear / BigInt.parse('1000000000000000000000000');
+    return yoctoNear / _yoctoPerNear;
   }
+
+  /// Converts to an exact decimal NEAR string, with no precision loss.
+  ///
+  /// By default trailing zeros are trimmed (`1.5`, `5`). Pass
+  /// [fractionDigits] to force a fixed number of decimals (`1.50`).
+  String toNearString({int? fractionDigits}) {
+    final whole = yoctoNear ~/ _yoctoPerNear;
+    final fraction = yoctoNear % _yoctoPerNear;
+    var fractionStr = fraction.toString().padLeft(24, '0');
+
+    if (fractionDigits != null) {
+      RangeError.checkValueInInterval(fractionDigits, 0, 24, 'fractionDigits');
+      fractionStr = fractionStr.substring(0, fractionDigits);
+      return fractionDigits == 0 ? '$whole' : '$whole.$fractionStr';
+    }
+
+    fractionStr = fractionStr.replaceFirst(RegExp(r'0+$'), '');
+    return fractionStr.isEmpty ? '$whole' : '$whole.$fractionStr';
+  }
+
+  /// Returns the sum of two amounts.
+  NearToken operator +(NearToken other) =>
+      NearToken._(yoctoNear + other.yoctoNear);
+
+  /// Returns the difference of two amounts.
+  ///
+  /// Throws [ArgumentError] if the result would be negative (yoctoNEAR is
+  /// unsigned on-chain).
+  NearToken operator -(NearToken other) {
+    final result = yoctoNear - other.yoctoNear;
+    if (result.isNegative) {
+      throw ArgumentError(
+        'NearToken subtraction would be negative: '
+        '$yoctoNear - ${other.yoctoNear}',
+      );
+    }
+    return NearToken._(result);
+  }
+
+  /// Whether this amount is less than [other].
+  bool operator <(NearToken other) => yoctoNear < other.yoctoNear;
+
+  /// Whether this amount is greater than [other].
+  bool operator >(NearToken other) => yoctoNear > other.yoctoNear;
+
+  /// Whether this amount is less than or equal to [other].
+  bool operator <=(NearToken other) => yoctoNear <= other.yoctoNear;
+
+  /// Whether this amount is greater than or equal to [other].
+  bool operator >=(NearToken other) => yoctoNear >= other.yoctoNear;
+
+  /// Compares two amounts, returning -1, 0 or 1.
+  int compareTo(NearToken other) => yoctoNear.compareTo(other.yoctoNear).sign;
 
   /// Converts this amount to a JSON string (yoctoNEAR).
   String toJson() => yoctoNear.toString();
@@ -140,7 +224,7 @@ class NearToken extends Equatable {
   List<Object?> get props => [yoctoNear];
 
   @override
-  String toString() => '${toNear()} NEAR';
+  String toString() => '${toNearString()} NEAR';
 }
 
 /// The type of cryptographic key.

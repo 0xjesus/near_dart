@@ -11,6 +11,12 @@ dependencies:
     sdk: flutter
   near_dart:
     path: ../
+  flutter_svg: ^2.0.10+1
+  url_launcher: ^6.2.5
+  flutter_inappwebview: ^6.0.0
+  http: ^1.3.0
+  shared_preferences: ^2.3.2
+  app_links: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +25,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/

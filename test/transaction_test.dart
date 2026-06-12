@@ -1,6 +1,5 @@
 import 'package:test/test.dart';
 import 'package:near_dart/near_dart.dart';
-import 'package:near_dart/near_dart.dart';
 
 void main() {
   group('Transaction', () {
@@ -8,9 +7,7 @@ void main() {
       final tx = Transaction(
         signerId: AccountId('alice.near'),
         receiverId: AccountId('bob.near'),
-        actions: [
-          TransferAction(deposit: NearToken.fromNear(1)),
-        ],
+        actions: [TransferAction(deposit: NearToken.fromNear(1))],
       );
 
       expect(tx.signerId.value, equals('alice.near'));
@@ -44,9 +41,7 @@ void main() {
       final tx = Transaction(
         signerId: AccountId('alice.near'),
         receiverId: AccountId('bob.near'),
-        actions: [
-          TransferAction(deposit: NearToken.fromNear(5)),
-        ],
+        actions: [TransferAction(deposit: NearToken.fromNear(5))],
       );
 
       final json = tx.toJson();
@@ -98,7 +93,9 @@ void main() {
           actions: [TransferAction(deposit: NearToken.fromNear(1))],
         ),
         signature: 'ed25519:abc123...',
-        publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
 
       expect(signedTx.transaction.signerId.value, equals('alice.near'));
@@ -113,7 +110,9 @@ void main() {
           actions: [TransferAction(deposit: NearToken.fromNear(1))],
         ),
         signature: 'ed25519:abc123...',
-        publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
 
       final json = signedTx.toJson();

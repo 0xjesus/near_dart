@@ -194,10 +194,7 @@ class RpcError extends Equatable {
 
   /// Creates a timeout error.
   factory RpcError.timeout(String message) {
-    return RpcError(
-      kind: RpcErrorKind.timeout,
-      message: message,
-    );
+    return RpcError(kind: RpcErrorKind.timeout, message: message);
   }
 
   /// Creates a parse error.

@@ -2,9 +2,6 @@ import 'package:equatable/equatable.dart';
 import 'package:meta/meta.dart';
 import 'package:near_dart/near_dart.dart';
 
-import 'execution_outcome.dart';
-import 'transaction.dart';
-
 /// Types of wallet connections.
 enum WalletType {
   /// Web browser wallet (redirects for signing).
@@ -26,10 +23,7 @@ enum WalletType {
 /// A connected wallet account.
 @immutable
 class WalletAccount extends Equatable {
-  const WalletAccount({
-    required this.accountId,
-    required this.publicKey,
-  });
+  const WalletAccount({required this.accountId, required this.publicKey});
 
   /// The account ID.
   final AccountId accountId;
@@ -39,9 +33,9 @@ class WalletAccount extends Equatable {
 
   /// Serializes to JSON.
   Map<String, dynamic> toJson() => {
-        'accountId': accountId.value,
-        'publicKey': publicKey.value,
-      };
+    'accountId': accountId.value,
+    'publicKey': publicKey.value,
+  };
 
   @override
   List<Object?> get props => [accountId, publicKey];
@@ -105,11 +99,11 @@ class SignedMessage extends Equatable {
 
   /// Serializes to JSON.
   Map<String, dynamic> toJson() => {
-        'accountId': accountId.value,
-        'publicKey': publicKey.value,
-        'signature': signature,
-        if (state != null) 'state': state,
-      };
+    'accountId': accountId.value,
+    'publicKey': publicKey.value,
+    'signature': signature,
+    if (state != null) 'state': state,
+  };
 
   @override
   List<Object?> get props => [accountId, publicKey, signature, state];
@@ -117,9 +111,10 @@ class SignedMessage extends Equatable {
 
 /// Abstract interface for wallet adapters.
 ///
-/// Implementations include:
-/// - [WalletConnectAdapter] for WalletConnect protocol
-/// - [DeepLinkWalletAdapter] for mobile deep links
+/// The primary implementation is `MyNearWalletAdapter` (redirect-based
+/// connect that provisions a function-call key for local signing).
+/// `WalletConnectAdapterBase` is an optional, experimental base for
+/// WalletConnect-style integrations.
 abstract class WalletAdapter {
   /// Unique identifier for this wallet.
   String get id;

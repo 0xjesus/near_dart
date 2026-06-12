@@ -75,11 +75,17 @@ void main() {
 
     test('viewAccount returns error for non-existent account', () async {
       final result = await client.viewAccount(
-        accountId: AccountId('this-account-definitely-does-not-exist-12345.testnet'),
+        accountId: AccountId(
+          'this-account-definitely-does-not-exist-12345.testnet',
+        ),
         blockReference: BlockReference.finality(Finality.final_),
       );
 
-      expect(result.isFailure, isTrue, reason: 'Should fail for non-existent account');
+      expect(
+        result.isFailure,
+        isTrue,
+        reason: 'Should fail for non-existent account',
+      );
 
       final error = (result as RpcFailure).error;
       expect(error.kind, equals(RpcErrorKind.rpcError));
@@ -105,11 +111,13 @@ void main() {
       // Query a block a few behind to ensure it exists
       final targetHeight = latestHeight - 10;
 
-      final result = await client.block(
-        BlockReference.blockId(targetHeight),
-      );
+      final result = await client.block(BlockReference.blockId(targetHeight));
 
-      expect(result.isSuccess, isTrue, reason: 'block() by height should succeed');
+      expect(
+        result.isSuccess,
+        isTrue,
+        reason: 'block() by height should succeed',
+      );
 
       final block = result.getOrNull()!;
       expect(block.header.height, equals(targetHeight));

@@ -1,17 +1,16 @@
 import 'package:test/test.dart';
 import 'package:near_dart/near_dart.dart';
-import 'package:near_dart/near_dart.dart';
 
 void main() {
   group('Action', () {
     group('CreateAccountAction', () {
       test('serializes to JSON correctly', () {
-        final action = CreateAccountAction();
+        const action = CreateAccountAction();
         expect(action.toJson(), equals({'CreateAccount': {}}));
       });
 
       test('has correct type', () {
-        final action = CreateAccountAction();
+        const action = CreateAccountAction();
         expect(action.type, equals(ActionType.createAccount));
       });
     });
@@ -20,13 +19,16 @@ void main() {
       test('serializes to JSON correctly', () {
         final code = [1, 2, 3, 4, 5];
         final action = DeployContractAction(code: code);
-        expect(action.toJson(), equals({
-          'DeployContract': {'code': code},
-        }));
+        expect(
+          action.toJson(),
+          equals({
+            'DeployContract': {'code': code},
+          }),
+        );
       });
 
       test('has correct type', () {
-        final action = DeployContractAction(code: []);
+        const action = DeployContractAction(code: []);
         expect(action.type, equals(ActionType.deployContract));
       });
     });
@@ -80,12 +82,13 @@ void main() {
 
     group('TransferAction', () {
       test('serializes to JSON correctly', () {
-        final action = TransferAction(
-          deposit: NearToken.fromNear(1),
-        );
+        final action = TransferAction(deposit: NearToken.fromNear(1));
 
         final json = action.toJson();
-        expect(json['Transfer']['deposit'], equals('1000000000000000000000000'));
+        expect(
+          json['Transfer']['deposit'],
+          equals('1000000000000000000000000'),
+        );
       });
 
       test('has correct type', () {
@@ -98,7 +101,9 @@ void main() {
       test('serializes to JSON correctly', () {
         final action = StakeAction(
           stake: NearToken.fromNear(100),
-          publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+          publicKey: PublicKey(
+            'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          ),
         );
 
         final json = action.toJson();
@@ -109,7 +114,9 @@ void main() {
       test('has correct type', () {
         final action = StakeAction(
           stake: NearToken.zero(),
-          publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+          publicKey: PublicKey(
+            'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          ),
         );
         expect(action.type, equals(ActionType.stake));
       });
@@ -118,8 +125,10 @@ void main() {
     group('AddKeyAction', () {
       test('serializes full access key to JSON', () {
         final action = AddKeyAction(
-          publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
-          accessKey: FullAccessKey(),
+          publicKey: PublicKey(
+            'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          ),
+          accessKey: const FullAccessKey(),
         );
 
         final json = action.toJson();
@@ -132,7 +141,9 @@ void main() {
 
       test('serializes function call access key to JSON', () {
         final action = AddKeyAction(
-          publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+          publicKey: PublicKey(
+            'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          ),
           accessKey: FunctionCallAccessKey(
             receiverId: AccountId('contract.near'),
             methodNames: ['get_balance', 'ft_transfer'],
@@ -142,15 +153,26 @@ void main() {
 
         final json = action.toJson();
         final permission = json['AddKey']['access_key']['permission'];
-        expect(permission['FunctionCall']['receiver_id'], equals('contract.near'));
-        expect(permission['FunctionCall']['method_names'], contains('get_balance'));
-        expect(permission['FunctionCall']['allowance'], equals('1000000000000000000000000'));
+        expect(
+          permission['FunctionCall']['receiver_id'],
+          equals('contract.near'),
+        );
+        expect(
+          permission['FunctionCall']['method_names'],
+          contains('get_balance'),
+        );
+        expect(
+          permission['FunctionCall']['allowance'],
+          equals('1000000000000000000000000'),
+        );
       });
 
       test('has correct type', () {
         final action = AddKeyAction(
-          publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
-          accessKey: FullAccessKey(),
+          publicKey: PublicKey(
+            'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          ),
+          accessKey: const FullAccessKey(),
         );
         expect(action.type, equals(ActionType.addKey));
       });
@@ -159,7 +181,9 @@ void main() {
     group('DeleteKeyAction', () {
       test('serializes to JSON correctly', () {
         final action = DeleteKeyAction(
-          publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+          publicKey: PublicKey(
+            'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          ),
         );
 
         final json = action.toJson();
@@ -168,7 +192,9 @@ void main() {
 
       test('has correct type', () {
         final action = DeleteKeyAction(
-          publicKey: PublicKey('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+          publicKey: PublicKey(
+            'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          ),
         );
         expect(action.type, equals(ActionType.deleteKey));
       });
@@ -181,7 +207,10 @@ void main() {
         );
 
         final json = action.toJson();
-        expect(json['DeleteAccount']['beneficiary_id'], equals('beneficiary.near'));
+        expect(
+          json['DeleteAccount']['beneficiary_id'],
+          equals('beneficiary.near'),
+        );
       });
 
       test('has correct type', () {

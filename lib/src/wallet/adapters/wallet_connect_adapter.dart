@@ -4,10 +4,6 @@ import 'dart:math';
 
 import 'package:near_dart/near_dart.dart';
 
-import 'package:near_dart/src/wallet/execution_outcome.dart';
-import 'package:near_dart/src/wallet/transaction.dart';
-import 'package:near_dart/src/wallet/wallet_adapter.dart';
-
 /// Configuration for WalletConnect adapter.
 class WalletConnectConfig {
   const WalletConnectConfig({
@@ -124,7 +120,9 @@ abstract class WalletConnectAdapterBase implements WalletAdapter {
     List<String>? methodNames,
   }) async {
     if (session == null) {
-      throw StateError('No active WalletConnect session. Call createPairingUri first.');
+      throw StateError(
+        'No active WalletConnect session. Call createPairingUri first.',
+      );
     }
     return getAccounts();
   }
@@ -161,10 +159,9 @@ abstract class WalletConnectAdapterBase implements WalletAdapter {
       throw StateError('No active WalletConnect session');
     }
 
-    final response = await sendRequest(
-      'near_signTransaction',
-      [transaction.toJson()],
-    );
+    final response = await sendRequest('near_signTransaction', [
+      transaction.toJson(),
+    ]);
 
     return _parseTransactionResult(response);
   }
@@ -184,7 +181,7 @@ abstract class WalletConnectAdapterBase implements WalletAdapter {
     );
 
     if (response is List) {
-      return response.map((r) => _parseTransactionResult(r)).toList();
+      return response.map(_parseTransactionResult).toList();
     }
 
     return [_parseTransactionResult(response)];
@@ -221,12 +218,14 @@ abstract class WalletConnectAdapterBase implements WalletAdapter {
     final random = Random.secure();
     final nonce = List<int>.generate(32, (_) => random.nextInt(256));
 
-    return signMessage(SignMessageParams(
-      message: message,
-      recipient: 'verify-owner',
-      nonce: nonce,
-      callbackUrl: callbackUrl,
-    ));
+    return signMessage(
+      SignMessageParams(
+        message: message,
+        recipient: 'verify-owner',
+        nonce: nonce,
+        callbackUrl: callbackUrl,
+      ),
+    );
   }
 
   /// Parses a transaction result from WalletConnect response.
@@ -238,7 +237,9 @@ abstract class WalletConnectAdapterBase implements WalletAdapter {
 
     if (statusJson is Map) {
       if (statusJson.containsKey('SuccessValue')) {
-        status = ExecutionStatus.successValue(statusJson['SuccessValue'] as String);
+        status = ExecutionStatus.successValue(
+          statusJson['SuccessValue'] as String,
+        );
       } else if (statusJson.containsKey('SuccessReceiptId')) {
         final ids = statusJson['SuccessReceiptId'];
         status = ExecutionStatus.successReceiptIds(
@@ -246,10 +247,13 @@ abstract class WalletConnectAdapterBase implements WalletAdapter {
         );
       } else if (statusJson.containsKey('Failure')) {
         final failure = statusJson['Failure'] as Map<String, dynamic>;
-        status = ExecutionStatus.failure(ExecutionError(
-          errorType: failure['error_type'] as String? ?? 'Unknown',
-          errorMessage: failure['error_message'] as String? ?? 'Unknown error',
-        ));
+        status = ExecutionStatus.failure(
+          ExecutionError(
+            errorType: failure['error_type'] as String? ?? 'Unknown',
+            errorMessage:
+                failure['error_message'] as String? ?? 'Unknown error',
+          ),
+        );
       } else {
         status = ExecutionStatus.successValue('');
       }
@@ -261,7 +265,9 @@ abstract class WalletConnectAdapterBase implements WalletAdapter {
       transactionHash: CryptoHash(json['transaction_hash'] as String? ?? ''),
       outcome: ExecutionOutcome(
         status: status,
-        gasBurnt: BigInt.tryParse(json['gas_burnt']?.toString() ?? '0') ?? BigInt.zero,
+        gasBurnt:
+            BigInt.tryParse(json['gas_burnt']?.toString() ?? '0') ??
+            BigInt.zero,
         logs: (json['logs'] as List?)?.cast<String>() ?? [],
       ),
     );
