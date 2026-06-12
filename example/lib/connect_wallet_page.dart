@@ -5,6 +5,60 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'wallet_keystore.dart';
 
+/// Shared persistent key store, so the pending key set before the redirect
+/// is the same one read on return (web) or at startup (mobile).
+final SharedPrefsKeyStore appKeyStore = SharedPrefsKeyStore();
+
+/// Builds a MyNearWallet adapter wired for the current platform: a full-page
+/// redirect on web, an external browser launch on mobile, and a callback URL
+/// that returns to our app (web) or via the `nearsdk://` deep link (mobile).
+MyNearWalletAdapter buildWalletAdapter({
+  required bool isTestnet,
+  required String contractId,
+}) {
+  final callbackBase = kIsWeb
+      ? Uri.base.replace(query: '').removeFragment().toString()
+      : 'nearsdk://callback';
+  return MyNearWalletAdapter(
+    config: MyNearWalletConfig(
+      contractId: AccountId(contractId),
+      successUrl: kIsWeb ? callbackBase : '$callbackBase/success',
+      failureUrl: kIsWeb ? callbackBase : '$callbackBase/failure',
+      network: isTestnet
+          ? MyNearWalletNetwork.testnet
+          : MyNearWalletNetwork.mainnet,
+    ),
+    keyStore: appKeyStore,
+    launchUrl: (uri) => launchUrl(
+      uri,
+      webOnlyWindowName: kIsWeb ? '_self' : null,
+      mode: kIsWeb
+          ? LaunchMode.platformDefault
+          : LaunchMode.externalApplication,
+    ),
+  );
+}
+
+/// Whether [uri] looks like a MyNearWallet sign-in callback.
+bool looksLikeWalletCallback(Uri uri) =>
+    uri.queryParameters.containsKey('account_id') ||
+    uri.queryParameters.containsKey('errorCode');
+
+/// Completes a wallet sign-in from a callback [uri] (promotes the pending
+/// key into the shared store) and returns the connected account, or null.
+///
+/// Call this at app startup (web: `Uri.base`; mobile: the `app_links` deep
+/// link) so the connection registers no matter which screen the redirect
+/// lands on.
+Future<WalletAccount?> handleWalletCallback(Uri uri) {
+  if (!looksLikeWalletCallback(uri)) return Future.value();
+  // completeSignIn only needs the key store; the config is irrelevant here.
+  return buildWalletAdapter(
+    isTestnet: true,
+    contractId: 'placeholder.testnet',
+  ).completeSignIn(uri);
+}
+
 /// Demonstrates the real MyNearWallet connect flow (no embedded WebView):
 ///
 /// 1. `signIn` generates a function-call key and redirects to MNW `/login`.
@@ -31,7 +85,6 @@ class ConnectWalletPage extends StatefulWidget {
 }
 
 class _ConnectWalletPageState extends State<ConnectWalletPage> {
-  final _keyStore = SharedPrefsKeyStore();
   WalletAccount? _account;
   String? _status;
   String? _error;
@@ -41,42 +94,12 @@ class _ConnectWalletPageState extends State<ConnectWalletPage> {
   void initState() {
     super.initState();
     _loadConnected();
-    // On web the redirect returns to this URL with the callback params.
-    if (kIsWeb && _looksLikeCallback(Uri.base)) {
-      _completeFromUri(Uri.base);
-    }
   }
 
-  MyNearWalletAdapter _adapter() {
-    // On web, the callback returns to our own page URL; on mobile it returns
-    // via the nearsdk:// deep link (configured in AndroidManifest/Info.plist).
-    final callbackBase = kIsWeb
-        ? Uri.base.replace(query: '').removeFragment().toString()
-        : 'nearsdk://callback';
-    return MyNearWalletAdapter(
-      config: MyNearWalletConfig(
-        contractId: AccountId(widget.contractId),
-        successUrl: kIsWeb ? callbackBase : '$callbackBase/success',
-        failureUrl: kIsWeb ? callbackBase : '$callbackBase/failure',
-        network: widget.isTestnet
-            ? MyNearWalletNetwork.testnet
-            : MyNearWalletNetwork.mainnet,
-      ),
-      keyStore: _keyStore,
-      launchUrl: (uri) => launchUrl(
-        uri,
-        // Full-page navigation on web; external browser on mobile.
-        webOnlyWindowName: kIsWeb ? '_self' : null,
-        mode: kIsWeb
-            ? LaunchMode.platformDefault
-            : LaunchMode.externalApplication,
-      ),
-    );
-  }
-
-  static bool _looksLikeCallback(Uri uri) =>
-      uri.queryParameters.containsKey('account_id') ||
-      uri.queryParameters.containsKey('errorCode');
+  MyNearWalletAdapter _adapter() => buildWalletAdapter(
+    isTestnet: widget.isTestnet,
+    contractId: widget.contractId,
+  );
 
   Future<void> _loadConnected() async {
     final accounts = await _adapter().getAccounts();
@@ -106,6 +129,10 @@ class _ConnectWalletPageState extends State<ConnectWalletPage> {
     }
   }
 
+  // Kept for reference / manual completion; the app root now processes the
+  // callback at startup (see handleWalletCallback), so this is unused in the
+  // normal flow.
+  // ignore: unused_element
   Future<void> _completeFromUri(Uri uri) async {
     setState(() => _busy = true);
     try {

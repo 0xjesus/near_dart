@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:near_dart/near_dart.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:app_links/app_links.dart';
 
 import 'connect_wallet_page.dart';
 
@@ -133,6 +135,43 @@ class NearSdkDemo extends StatefulWidget {
 
 class _NearSdkDemoState extends State<NearSdkDemo> {
   final _appState = AppState();
+  final _navKey = GlobalKey<NavigatorState>();
+  AppLinks? _appLinks;
+
+  @override
+  void initState() {
+    super.initState();
+    _initWalletCallbacks();
+  }
+
+  /// Processes the wallet sign-in callback wherever the redirect lands:
+  /// on web the initial app URL carries it; on mobile it arrives as a
+  /// `nearsdk://` deep link (initial + while running).
+  Future<void> _initWalletCallbacks() async {
+    if (kIsWeb) {
+      if (looksLikeWalletCallback(Uri.base)) {
+        await _processCallback(Uri.base);
+      }
+      return;
+    }
+    _appLinks = AppLinks();
+    final initial = await _appLinks!.getInitialLink();
+    if (initial != null) await _processCallback(initial);
+    _appLinks!.uriLinkStream.listen(_processCallback);
+  }
+
+  Future<void> _processCallback(Uri uri) async {
+    final account = await handleWalletCallback(uri);
+    final context = _navKey.currentContext;
+    if (account != null && context != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Wallet connected: ${account.accountId.value}'),
+          backgroundColor: NearTheme.green,
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -146,6 +185,7 @@ class _NearSdkDemoState extends State<NearSdkDemo> {
       listenable: _appState,
       builder: (context, _) {
         return MaterialApp(
+          navigatorKey: _navKey,
           title: 'NEAR SDK Demo',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
