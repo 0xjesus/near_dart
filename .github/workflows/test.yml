@@ -38,8 +38,8 @@ jobs:
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed .
 
-      - name: Analyze code
-        run: dart analyze --fatal-infos
+      - name: Analyze code (package only — example is analyzed by the Flutter build jobs)
+        run: dart analyze --fatal-infos lib test
 
   unit-tests:
     name: Unit Tests
@@ -183,6 +183,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Analyze example
+        run: flutter analyze lib
+        working-directory: example
       - name: Build APK
         run: flutter build apk --debug
         working-directory: example
