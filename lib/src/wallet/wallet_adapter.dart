@@ -111,9 +111,10 @@ class SignedMessage extends Equatable {
 
 /// Abstract interface for wallet adapters.
 ///
-/// Implementations include:
-/// - [WalletConnectAdapter] for WalletConnect protocol
-/// - [DeepLinkWalletAdapter] for mobile deep links
+/// The primary implementation is `MyNearWalletAdapter` (redirect-based
+/// connect that provisions a function-call key for local signing).
+/// `WalletConnectAdapterBase` is an optional, experimental base for
+/// WalletConnect-style integrations.
 abstract class WalletAdapter {
   /// Unique identifier for this wallet.
   String get id;

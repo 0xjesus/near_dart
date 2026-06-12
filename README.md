@@ -302,15 +302,35 @@ switch (result) {
 
 ## Example App
 
-See the [example](example/) directory for a complete Flutter app demonstrating network status and account lookup.
+See the [example](example/) directory for a complete Flutter app demonstrating
+every SDK feature: local Sign & Send, wallet connect (redirect + deep link),
+and all RPC queries — with network switching between testnet and mainnet.
+
+## Verified on real devices & chains
+
+Recorded evidence from the example app running against **real NEAR testnet**
+(no mocks at any layer):
+
+| Demo | Evidence | On-chain proof |
+|---|---|---|
+| Android: generate key → faucet → **sign & send on-chain** | [video](docs/demo/android-sign-and-send-onchain.mp4) / [gif](docs/demo/android-sign-and-send-onchain.gif) | [`JByxPfTt…34cZG`](https://testnet.nearblocks.io/txns/JByxPfTtJwhEatZhU8FimkbkazygFajvg5ygnTH34cZG) |
+| Android: wallet connect → browser → `nearsdk://` deep link → connected | [video](docs/demo/android-wallet-connect-roundtrip.mp4) / [gif](docs/demo/android-wallet-connect-roundtrip.gif) | function-call key provisioning flow |
+
+Additionally verified: web (Chrome, dart2js **and** dart2wasm — byte-identical
+signatures vs near-api-js), real on-chain transfers from the browser, and a
+scheduled CI E2E that signs and sends a real testnet transaction. iOS builds
+are verified on every push via a macOS CI job.
 
 ## Testing
 
 ```bash
-dart test
+dart test --exclude-tags integration   # 394 offline tests (no network)
+dart test test/integration/testnet/    # live testnet RPC tests
+dart test test/e2e/                    # incl. a REAL sign+send on testnet
 ```
 
-111 tests covering unit tests, integration tests against NEAR testnet and mainnet.
+Serialization and signatures are validated **byte-for-byte** against canonical
+near-api-js@7.2.0 vectors (`test/fixtures/near_api_js_vectors.json`).
 
 ## License
 
