@@ -73,10 +73,19 @@ typedef UrlLauncher = Future<bool> Function(Uri uri);
 /// 2. Handle the callback URLs to extract account information
 /// 3. Call handleCallback() when your app receives the deep link
 class MyNearWalletAdapter implements WalletAdapter {
-  MyNearWalletAdapter({required this.config, required this.launchUrl});
+  MyNearWalletAdapter({
+    required this.config,
+    required this.launchUrl,
+    KeyStore? keyStore,
+  }) : keyStore = keyStore ?? InMemoryKeyStore();
 
   final MyNearWalletConfig config;
   final UrlLauncher launchUrl;
+
+  /// Persists the function-call key generated during sign-in so it survives
+  /// the redirect and can sign subsequent calls locally. Defaults to an
+  /// in-memory store; provide a persistent one for the web redirect flow.
+  final KeyStore keyStore;
 
   WalletAccount? _account;
 
@@ -92,18 +101,27 @@ class MyNearWalletAdapter implements WalletAdapter {
   @override
   String? get iconUrl => 'https://app.mynearwallet.com/favicon.ico';
 
-  /// Builds the sign-in URL for MyNearWallet.
+  /// Builds the sign-in URL for MyNearWallet's `/login` endpoint.
+  ///
+  /// [publicKey] is the public half of a freshly generated ed25519 key
+  /// pair; MyNearWallet adds it to the account as a **function-call access
+  /// key** scoped to [contractId] and [methodNames] (empty = all methods).
+  /// The dApp keeps the private half and signs subsequent calls locally —
+  /// no further redirects. [methodNames] are appended as repeated query
+  /// params, matching near-api-js `requestSignIn`.
   Uri buildSignInUrl({
     required AccountId contractId,
-    List<String>? methodNames,
+    required PublicKey publicKey,
+    List<String> methodNames = const [],
   }) {
     return Uri.parse(config.walletUrl).replace(
       path: '/login',
       queryParameters: {
-        'contract_id': contractId.value,
         'success_url': config.successUrl,
         'failure_url': config.failureUrl,
-        if (methodNames != null && methodNames.isNotEmpty) 'public_key': 'true',
+        'contract_id': contractId.value,
+        'public_key': publicKey.value,
+        if (methodNames.isNotEmpty) 'methodNames': methodNames,
       },
     );
   }
@@ -113,58 +131,103 @@ class MyNearWalletAdapter implements WalletAdapter {
     required AccountId contractId,
     List<String>? methodNames,
   }) async {
+    // Generate the function-call key the wallet will provision, stash it as
+    // the pending key (so it survives the redirect), and launch /login with
+    // its real public key. The private half stays with us for local signing.
+    final keyPair = await KeyPairEd25519.generate();
+    await keyStore.setPendingKey(keyPair);
+
     final uri = buildSignInUrl(
       contractId: contractId,
-      methodNames: methodNames,
+      publicKey: keyPair.publicKey,
+      methodNames: methodNames ?? const [],
     );
-
     await launchUrl(uri);
 
-    // The actual account info will come from handling the callback URL
+    // The wallet redirects back; the account is resolved in [completeSignIn].
     return [];
   }
 
-  /// Handles a callback URL from MyNearWallet.
+  /// Completes sign-in from the wallet's callback [callbackUri].
   ///
-  /// Call this when your app receives a deep link from MyNearWallet.
-  /// Returns the parsed callback data.
-  MyNearWalletCallback handleCallback(Uri callbackUri) {
+  /// Parses `account_id`/`public_key`, promotes the pending key pair to a
+  /// stored key for that account (so later calls can be signed locally),
+  /// and returns the connected [WalletAccount] — or null if the callback
+  /// was a failure or no sign-in was pending.
+  ///
+  /// Call this on app start (web: the initial URL) or when a deep link
+  /// arrives (mobile).
+  Future<WalletAccount?> completeSignIn(Uri callbackUri) async {
     final callback = MyNearWalletCallback.fromUri(callbackUri);
-
-    if (callback.isSuccess && callback.accountId != null) {
-      _account = WalletAccount(
-        accountId: AccountId(callback.accountId!),
-        publicKey: callback.publicKey != null
-            ? PublicKey(callback.publicKey!)
-            : PublicKey('ed25519:placeholder'),
-      );
+    if (!callback.isSuccess || callback.accountId == null) {
+      await keyStore.clearPendingKey();
+      return null;
     }
 
-    return callback;
+    final pending = await keyStore.getPendingKey();
+    if (pending == null) return null;
+
+    // The wallet returns the public key it provisioned; it must match the
+    // pending key we generated, otherwise we'd hold an unusable secret.
+    final returnedKey = callback.publicKey;
+    if (returnedKey != null && returnedKey != pending.publicKey.value) {
+      await keyStore.clearPendingKey();
+      return null;
+    }
+
+    final accountId = AccountId(callback.accountId!);
+    await keyStore.setKey(accountId, pending);
+    await keyStore.clearPendingKey();
+
+    final account = WalletAccount(
+      accountId: accountId,
+      publicKey: pending.publicKey,
+    );
+    _account = account;
+    return account;
   }
 
-  /// Sets the account directly (useful when restoring from storage).
-  void setAccount(WalletAccount account) {
-    _account = account;
-  }
+  /// Parses a MyNearWallet callback URL without touching the key store.
+  ///
+  /// Prefer [completeSignIn] for the sign-in flow; this is for inspecting a
+  /// raw callback (e.g. transaction-result callbacks).
+  MyNearWalletCallback handleCallback(Uri callbackUri) =>
+      MyNearWalletCallback.fromUri(callbackUri);
 
   @override
   Future<void> signOut() async {
+    for (final accountId in await keyStore.accounts()) {
+      await keyStore.removeKey(accountId);
+    }
+    await keyStore.clearPendingKey();
     _account = null;
   }
 
   @override
   Future<List<WalletAccount>> getAccounts() async {
-    if (_account != null) {
-      return [_account!];
+    // The key store is the source of truth, so a connection survives an app
+    // restart (the in-process [_account] is just a cache).
+    final result = <WalletAccount>[];
+    for (final accountId in await keyStore.accounts()) {
+      final keyPair = await keyStore.getKey(accountId);
+      if (keyPair != null) {
+        result.add(
+          WalletAccount(accountId: accountId, publicKey: keyPair.publicKey),
+        );
+      }
     }
-    return [];
+    return result;
   }
 
   @override
-  Future<bool> isSignedIn() async {
-    return _account != null;
-  }
+  Future<bool> isSignedIn() async => (await keyStore.accounts()).isNotEmpty;
+
+  /// Returns the locally-stored signing key for [accountId], if connected.
+  ///
+  /// Use it to sign function-call transactions locally (no redirect) with
+  /// `signTransaction` / `Account`.
+  Future<KeyPairEd25519?> keyFor(AccountId accountId) =>
+      keyStore.getKey(accountId);
 
   /// Builds a transaction signing URL for MyNearWallet's `/sign` endpoint.
   ///

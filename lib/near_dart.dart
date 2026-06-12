@@ -77,6 +77,7 @@ export 'src/client/responses/transaction_response.dart' hide ExecutionOutcome;
 export 'src/client/responses/chunk_response.dart';
 
 // Wallet
+export 'src/wallet/key_store.dart';
 export 'src/wallet/actions.dart';
 export 'src/wallet/transaction.dart';
 export 'src/wallet/execution_outcome.dart';

@@ -3202,10 +3202,15 @@ class _WalletUrlPageState extends State<WalletUrlPage> {
   void _buildSignInUrl() {
     final adapter = _createAdapter();
 
+    // /login provisions a function-call key — its REAL public key goes in
+    // the URL (example value; signIn() generates one for you).
     setState(() {
       _signInUrl = adapter
           .buildSignInUrl(
             contractId: AccountId('example.near'),
+            publicKey: PublicKey(
+              'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+            ),
             methodNames: ['ft_transfer', 'ft_transfer_call'],
           )
           .toString();

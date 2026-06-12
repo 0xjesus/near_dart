@@ -71,15 +71,25 @@ void main() {
     });
 
     group('buildSignInUrl', () {
-      test('builds mainnet sign-in URL', () {
+      // near-api-js requestSignIn semantics: /login with success_url,
+      // failure_url, contract_id, the REAL generated public_key (the
+      // function-call access key being requested), and methodNames appended
+      // as repeated query params. (The old code sent public_key='true',
+      // which never provisions a usable key.)
+      const fcPublicKey =
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj';
+
+      test('builds mainnet sign-in URL with the real public key', () {
         final url = mainnetAdapter.buildSignInUrl(
           contractId: AccountId('dapp.near'),
+          publicKey: PublicKey(fcPublicKey),
         );
 
         expect(url.scheme, equals('https'));
         expect(url.host, equals('app.mynearwallet.com'));
         expect(url.path, equals('/login'));
         expect(url.queryParameters['contract_id'], equals('dapp.near'));
+        expect(url.queryParameters['public_key'], equals(fcPublicKey));
         expect(
           url.queryParameters['success_url'],
           equals('https://app.com/callback/success'),
@@ -93,36 +103,35 @@ void main() {
       test('builds testnet sign-in URL', () {
         final url = testnetAdapter.buildSignInUrl(
           contractId: AccountId('dapp.testnet'),
+          publicKey: PublicKey(fcPublicKey),
         );
 
         expect(url.host, equals('testnet.mynearwallet.com'));
         expect(url.queryParameters['contract_id'], equals('dapp.testnet'));
       });
 
-      test('includes public_key when methodNames provided', () {
+      test('appends methodNames as repeated query params', () {
         final url = mainnetAdapter.buildSignInUrl(
           contractId: AccountId('dapp.near'),
+          publicKey: PublicKey(fcPublicKey),
           methodNames: ['view_method', 'another_method'],
         );
 
-        expect(url.queryParameters['public_key'], equals('true'));
+        expect(
+          url.queryParametersAll['methodNames'],
+          equals(['view_method', 'another_method']),
+        );
       });
 
-      test('omits public_key when methodNames is empty', () {
+      test('omits methodNames when empty', () {
         final url = mainnetAdapter.buildSignInUrl(
           contractId: AccountId('dapp.near'),
-          methodNames: [],
+          publicKey: PublicKey(fcPublicKey),
         );
 
-        expect(url.queryParameters.containsKey('public_key'), isFalse);
-      });
-
-      test('omits public_key when methodNames is null', () {
-        final url = mainnetAdapter.buildSignInUrl(
-          contractId: AccountId('dapp.near'),
-        );
-
-        expect(url.queryParameters.containsKey('public_key'), isFalse);
+        expect(url.queryParameters.containsKey('methodNames'), isFalse);
+        // public_key is always sent — it's the key being provisioned.
+        expect(url.queryParameters['public_key'], equals(fcPublicKey));
       });
     });
 

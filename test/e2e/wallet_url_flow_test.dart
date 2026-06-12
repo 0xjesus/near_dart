@@ -31,42 +31,76 @@ void main() {
       );
     });
 
-    test('complete sign-in URL flow', () async {
-      // Step 1: Build sign-in URL
-      final signInUrl = adapter.buildSignInUrl(
-        contractId: AccountId('app.near'),
-        methodNames: ['view_method'],
+    test(
+      'complete sign-in flow provisions and stores a function-call key',
+      () async {
+        // Step 1: signIn generates a function-call key and launches /login
+        // with the key's REAL public key.
+        await adapter.signIn(
+          contractId: AccountId('app.near'),
+          methodNames: ['view_method'],
+        );
+
+        expect(launchedUrls, hasLength(1));
+        final loginUrl = launchedUrls.single;
+        expect(loginUrl.path, equals('/login'));
+        expect(loginUrl.queryParameters['contract_id'], equals('app.near'));
+        final provisionedKey = loginUrl.queryParameters['public_key']!;
+        expect(provisionedKey, startsWith('ed25519:'));
+        expect(provisionedKey, isNot(equals('ed25519:true')));
+        expect(
+          loginUrl.queryParametersAll['methodNames'],
+          equals(['view_method']),
+        );
+
+        // Step 2: the wallet redirects back with the account and the key it
+        // provisioned.
+        final account = await adapter.completeSignIn(
+          Uri.parse(
+            'https://myapp.com/wallet/success'
+            '?account_id=alice.near&public_key=$provisionedKey',
+          ),
+        );
+
+        // Step 3: the account is connected and its private key is stored, so
+        // later calls can be signed locally with no redirect.
+        expect(account, isNotNull);
+        expect(account!.accountId.value, equals('alice.near'));
+        expect(account.publicKey.value, equals(provisionedKey));
+
+        final stored = await adapter.keyFor(AccountId('alice.near'));
+        expect(stored, isNotNull);
+        expect(stored!.publicKey.value, equals(provisionedKey));
+
+        final accounts = await adapter.getAccounts();
+        expect(accounts.single.accountId.value, equals('alice.near'));
+        // The pending key was consumed.
+        expect(await adapter.keyStore.getPendingKey(), isNull);
+      },
+    );
+
+    test('completeSignIn rejects a mismatched provisioned key', () async {
+      await adapter.signIn(contractId: AccountId('app.near'));
+
+      // Wallet returns a different public key than the one we generated.
+      final account = await adapter.completeSignIn(
+        Uri.parse(
+          'https://myapp.com/wallet/success'
+          '?account_id=alice.near&public_key=ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+        ),
       );
 
-      // Verify URL structure
-      expect(signInUrl.scheme, equals('https'));
-      expect(signInUrl.host, equals('app.mynearwallet.com'));
-      expect(signInUrl.path, equals('/login'));
-      expect(signInUrl.queryParameters['contract_id'], equals('app.near'));
-      expect(
-        signInUrl.queryParameters['success_url'],
-        equals('https://myapp.com/wallet/success'),
-      );
-      expect(
-        signInUrl.queryParameters['failure_url'],
-        equals('https://myapp.com/wallet/failure'),
-      );
+      expect(account, isNull);
+      expect(await adapter.isSignedIn(), isFalse);
+    });
 
-      // Step 2: Simulate wallet callback (success)
-      final successCallback = Uri.parse(
-        'https://myapp.com/wallet/success?account_id=alice.near&public_key=ed25519:abc123',
+    test('completeSignIn returns null on a failure callback', () async {
+      await adapter.signIn(contractId: AccountId('app.near'));
+      final account = await adapter.completeSignIn(
+        Uri.parse('https://myapp.com/wallet/failure?errorCode=user_cancelled'),
       );
-      final callback = adapter.handleCallback(successCallback);
-
-      // Step 3: Verify callback parsing
-      expect(callback.isSuccess, isTrue);
-      expect(callback.accountId, equals('alice.near'));
-      expect(callback.publicKey, equals('ed25519:abc123'));
-
-      // Step 4: Verify adapter state
-      final accounts = await adapter.getAccounts();
-      expect(accounts.length, equals(1));
-      expect(accounts.first.accountId.value, equals('alice.near'));
+      expect(account, isNull);
+      expect(await adapter.isSignedIn(), isFalse);
     });
 
     test('sign-in error callback handling', () {
@@ -263,23 +297,29 @@ void main() {
 
   group('E2E: Full Wallet Session Flow', () {
     test('sign in -> get accounts -> sign out flow', () async {
+      final launchedUrls = <Uri>[];
       final adapter = MyNearWalletAdapter(
         config: MyNearWalletConfig(
           contractId: AccountId('dapp.near'),
           successUrl: 'https://dapp.com/success',
           failureUrl: 'https://dapp.com/failure',
         ),
-        launchUrl: (_) async => true,
+        launchUrl: (uri) async {
+          launchedUrls.add(uri);
+          return true;
+        },
       );
 
       // Initially not signed in
       expect(await adapter.isSignedIn(), isFalse);
       expect(await adapter.getAccounts(), isEmpty);
 
-      // Simulate sign-in callback
-      adapter.handleCallback(
+      // Sign in: generate key -> launch -> complete from the callback.
+      await adapter.signIn(contractId: AccountId('dapp.near'));
+      final key = launchedUrls.single.queryParameters['public_key']!;
+      await adapter.completeSignIn(
         Uri.parse(
-          'https://dapp.com/success?account_id=user.near&public_key=ed25519:xyz',
+          'https://dapp.com/success?account_id=user.near&public_key=$key',
         ),
       );
 
@@ -297,7 +337,14 @@ void main() {
       expect(await adapter.getAccounts(), isEmpty);
     });
 
-    test('set account directly', () async {
+    test('restores the connection from a persisted key store', () async {
+      // Simulate a previous session: the key store already holds the
+      // function-call key for an account (what a SecureStorageKeyStore would
+      // load on app start).
+      final keyStore = InMemoryKeyStore();
+      final keyPair = await KeyPairEd25519.fromSeed(List.filled(32, 9));
+      await keyStore.setKey(AccountId('restored.near'), keyPair);
+
       final adapter = MyNearWalletAdapter(
         config: MyNearWalletConfig(
           contractId: AccountId('dapp.near'),
@@ -305,19 +352,13 @@ void main() {
           failureUrl: 'https://dapp.com/failure',
         ),
         launchUrl: (_) async => true,
-      );
-
-      // Set account directly (e.g., restoring from storage)
-      adapter.setAccount(
-        WalletAccount(
-          accountId: AccountId('restored.near'),
-          publicKey: PublicKey('ed25519:restoredKey'),
-        ),
+        keyStore: keyStore,
       );
 
       expect(await adapter.isSignedIn(), isTrue);
       final accounts = await adapter.getAccounts();
       expect(accounts.first.accountId.value, equals('restored.near'));
+      expect(accounts.first.publicKey, equals(keyPair.publicKey));
     });
   });
 
@@ -333,7 +374,12 @@ void main() {
         launchUrl: (_) async => true,
       );
 
-      final url = adapter.buildSignInUrl(contractId: AccountId('app.near'));
+      final url = adapter.buildSignInUrl(
+        contractId: AccountId('app.near'),
+        publicKey: PublicKey(
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+        ),
+      );
       expect(url.host, equals('app.mynearwallet.com'));
     });
 
@@ -348,7 +394,12 @@ void main() {
         launchUrl: (_) async => true,
       );
 
-      final url = adapter.buildSignInUrl(contractId: AccountId('app.testnet'));
+      final url = adapter.buildSignInUrl(
+        contractId: AccountId('app.testnet'),
+        publicKey: PublicKey(
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+        ),
+      );
       expect(url.host, equals('testnet.mynearwallet.com'));
     });
   });
