@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart' hide Action;
 import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:near_dart/near_dart.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,6 +9,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:app_links/app_links.dart';
 
 import 'connect_wallet_page.dart';
+import 'glass.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,13 +32,15 @@ String describeRpcError(RpcError e) {
 }
 
 // NEAR Official Colors
+/// Legacy color tokens, repointed to the dark "NEAR Terminal" glass palette
+/// (see [Near] in glass.dart). Kept so existing screens restyle automatically.
 class NearTheme {
-  static const black = Color(0xFF000000);
-  static const white = Color(0xFFFFFFFF);
-  static const green = Color(0xFF00EC97);
-  static const grey = Color(0xFF9CA3AF);
-  static const greyLight = Color(0xFFF3F4F6);
-  static const greyDark = Color(0xFF1F2937);
+  static const black = Near.textPrimary; // primary text (light on dark)
+  static const white = Near.textPrimary; // foreground text/icons
+  static const green = Near.mint;
+  static const grey = Near.textMuted;
+  static final greyLight = Colors.white.withValues(alpha: 0.08); // fills/borders
+  static const greyDark = Near.textMuted;
 }
 
 // App State
@@ -189,49 +192,51 @@ class _NearSdkDemoState extends State<NearSdkDemo> {
           title: 'NEAR SDK Demo',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            brightness: Brightness.light,
-            scaffoldBackgroundColor: NearTheme.white,
-            primaryColor: NearTheme.green,
-            colorScheme: const ColorScheme.light(
-              primary: NearTheme.green,
-              onPrimary: NearTheme.black,
-              surface: NearTheme.white,
+            brightness: Brightness.dark,
+            scaffoldBackgroundColor: Colors.transparent,
+            primaryColor: Near.mint,
+            colorScheme: const ColorScheme.dark(
+              primary: Near.mint,
+              onPrimary: Near.canvas,
+              surface: Near.ink,
+              brightness: Brightness.dark,
             ),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: NearTheme.white,
-              foregroundColor: NearTheme.black,
+            textTheme: GoogleFonts.hankenGroteskTextTheme(
+              ThemeData.dark().textTheme,
+            ).apply(bodyColor: Near.textPrimary, displayColor: Near.textPrimary),
+            appBarTheme: AppBarTheme(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Near.textPrimary,
               elevation: 0,
               centerTitle: false,
+              titleTextStyle: Near.display(20),
             ),
-            cardTheme: CardThemeData(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: NearTheme.greyLight),
-              ),
-            ),
+            iconTheme: const IconThemeData(color: Near.textPrimary),
             inputDecorationTheme: InputDecorationTheme(
               filled: true,
-              fillColor: NearTheme.greyLight,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+              fillColor: Colors.white.withValues(alpha: 0.05),
+              hintStyle: Near.body(13, color: Near.textMuted),
+              labelStyle: Near.body(13, color: Near.textMuted),
+              floatingLabelStyle: Near.body(12, color: Near.mint),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Near.glassBorder),
               ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Near.mint, width: 1.4),
               ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
-          // Constrain content to a phone-width column, centered, so the app
-          // looks right on wide desktop/web screens instead of stretching
-          // edge-to-edge.
+          // Living glass canvas behind everything, content centered to a
+          // phone-width column so it looks right on wide desktop/web screens.
           builder: (context, child) {
-            return ColoredBox(
-              color: const Color(0xFFE5E7EB),
+            return AnimatedGlassBackground(
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
+                  constraints: const BoxConstraints(maxWidth: 580),
                   child: child ?? const SizedBox.shrink(),
                 ),
               ),
@@ -244,6 +249,17 @@ class _NearSdkDemoState extends State<NearSdkDemo> {
   }
 }
 
+// Home feature descriptor
+class _Feature {
+  const _Feature(this.icon, this.title, this.subtitle, this.build,
+      {this.featured = false});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget Function() build;
+  final bool featured;
+}
+
 // Home Page
 class HomePage extends StatelessWidget {
   final AppState appState;
@@ -252,140 +268,97 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final testnet = appState.network == Network.testnet;
+    final features = <_Feature>[
+      _Feature(Icons.bolt, 'Sign & Send', 'Local key → Borsh → send_tx, on-chain',
+          () => LocalSigningPage(appState: appState), featured: true),
+      _Feature(Icons.account_balance_wallet_outlined, 'Connect Wallet',
+          'MyNearWallet redirect, then sign locally',
+          () => ConnectWalletPage(
+                isTestnet: testnet,
+                contractId: testnet
+                    ? 'guestbook.near-examples.testnet'
+                    : 'social.near',
+              ),
+          featured: true),
+      _Feature(Icons.wifi, 'Network Status', 'status() — node, sync, protocol',
+          () => NetworkStatusPage(appState: appState)),
+      _Feature(Icons.account_circle_outlined, 'Account Explorer',
+          'viewAccount() — balance, storage, code',
+          () => AccountExplorerPage(appState: appState)),
+      _Feature(Icons.key_outlined, 'Access Keys',
+          'viewAccessKeyList() — full & function-call',
+          () => AccessKeysPage(appState: appState)),
+      _Feature(Icons.code, 'Contract Calls',
+          'callFunction() — ft_metadata, balances',
+          () => ContractCallsPage(appState: appState)),
+      _Feature(Icons.how_to_vote_outlined, 'Validators',
+          'validators() — epoch, stake', () => ValidatorsPage(appState: appState)),
+      _Feature(Icons.view_in_ar_outlined, 'Block Explorer',
+          'block() — header, chunks', () => BlockExplorerPage(appState: appState)),
+      _Feature(Icons.local_gas_station_outlined, 'Gas Price',
+          'gasPrice() — yoctoNEAR/gas', () => GasPricePage(appState: appState)),
+      _Feature(Icons.data_object, 'Code & State',
+          'viewCode(), viewState()', () => CodeStatePage(appState: appState)),
+      _Feature(Icons.send_outlined, 'Transaction Builder',
+          'Build & serialize actions',
+          () => TransactionBuilderPage(appState: appState)),
+      _Feature(Icons.link, 'Wallet URLs', 'MyNearWallet URL building',
+          () => WalletUrlPage(appState: appState)),
+      _Feature(Icons.web, 'Legacy WebView', 'Embedded flow — mobile only',
+          () => WalletConnectPage(appState: appState)),
+    ];
+
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            SvgPicture.asset('assets/near_logo.svg', height: 28),
-            const SizedBox(width: 12),
-            const Text(
-              'SDK Demo',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-        actions: [
-          _NetworkSwitch(appState: appState),
-          const SizedBox(width: 16),
-        ],
-      ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           children: [
-            // Header
-            Text(
-              'Test all SDK features',
-              style: TextStyle(color: NearTheme.grey, fontSize: 14),
+            // Hero
+            Reveal(
+              index: 0,
+              child: Row(
+                children: [
+                  const NearMark(size: 44),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('NEAR', style: Near.display(26)),
+                        Text('Flutter SDK',
+                            style: Near.mono(12, color: Near.textMuted)),
+                      ],
+                    ),
+                  ),
+                  _NetworkSwitch(appState: appState),
+                ],
+              ),
             ),
-            const SizedBox(height: 24),
-
-            // Local Signing - Featured (works fully on web!)
-            _FeatureCard(
-              icon: Icons.bolt,
-              title: 'Sign & Send (local key)',
-              subtitle: 'Generate a key, fund via faucet, send a real transfer',
-              onTap: () => _push(context, LocalSigningPage(appState: appState)),
-              featured: true,
+            const SizedBox(height: 22),
+            Reveal(
+              index: 1,
+              child: Text(
+                'One Dart codebase. Sign, send and connect on mobile, web '
+                'and desktop.',
+                style: Near.body(14.5, color: Near.textMuted),
+              ),
             ),
-            const SizedBox(height: 8),
-
-            // Wallet Connection - Featured (redirect flow, works on web)
-            _FeatureCard(
-              icon: Icons.account_balance_wallet,
-              title: 'Connect Wallet (MyNearWallet)',
-              subtitle: 'Redirect connect + provision a key, then sign locally',
-              onTap: () => _push(
-                context,
-                ConnectWalletPage(
-                  isTestnet: appState.network == Network.testnet,
-                  contractId: appState.network == Network.testnet
-                      ? 'guestbook.near-examples.testnet'
-                      : 'social.near',
+            const SizedBox(height: 22),
+            for (var i = 0; i < features.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Reveal(
+                  index: i + 2,
+                  child: _FeatureCard(
+                    icon: features[i].icon,
+                    title: features[i].title,
+                    subtitle: features[i].subtitle,
+                    featured: features[i].featured,
+                    onTap: () => _push(context, features[i].build()),
+                  ),
                 ),
               ),
-              featured: true,
-            ),
-            const SizedBox(height: 8),
-
-            // Legacy embedded-WebView flow (mobile only — broken on web)
-            _FeatureCard(
-              icon: Icons.web,
-              title: 'Wallet Connect (legacy WebView)',
-              subtitle: 'Embedded WebView flow — mobile only',
-              onTap: () =>
-                  _push(context, WalletConnectPage(appState: appState)),
-            ),
-            const SizedBox(height: 8),
-
-            // Feature Cards
-            _FeatureCard(
-              icon: Icons.wifi,
-              title: 'Network Status',
-              subtitle: 'status() - Node info, sync status, protocol version',
-              onTap: () =>
-                  _push(context, NetworkStatusPage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.account_circle_outlined,
-              title: 'Account Explorer',
-              subtitle: 'viewAccount() - Balance, storage, code hash',
-              onTap: () =>
-                  _push(context, AccountExplorerPage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.key_outlined,
-              title: 'Access Keys',
-              subtitle:
-                  'viewAccessKeyList() - Full access & function call keys',
-              onTap: () => _push(context, AccessKeysPage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.code,
-              title: 'Contract Calls',
-              subtitle:
-                  'callFunction() - ft_metadata, ft_balance_of, ft_total_supply',
-              onTap: () =>
-                  _push(context, ContractCallsPage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.how_to_vote_outlined,
-              title: 'Validators',
-              subtitle: 'validators() - Current epoch, stake distribution',
-              onTap: () => _push(context, ValidatorsPage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.view_in_ar_outlined,
-              title: 'Block Explorer',
-              subtitle: 'block() - Latest block, header, chunks',
-              onTap: () =>
-                  _push(context, BlockExplorerPage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.local_gas_station_outlined,
-              title: 'Gas Price',
-              subtitle: 'gasPrice() - Current gas price in yoctoNEAR',
-              onTap: () => _push(context, GasPricePage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.data_object,
-              title: 'Contract Code & State',
-              subtitle: 'viewCode(), viewState() - WASM code, storage',
-              onTap: () => _push(context, CodeStatePage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.send_outlined,
-              title: 'Transaction Builder',
-              subtitle: 'Build & serialize transactions, actions',
-              onTap: () =>
-                  _push(context, TransactionBuilderPage(appState: appState)),
-            ),
-            _FeatureCard(
-              icon: Icons.link,
-              title: 'Wallet URLs',
-              subtitle: 'MyNearWallet URL building & parsing',
-              onTap: () => _push(context, WalletUrlPage(appState: appState)),
-            ),
           ],
         ),
       ),
@@ -393,7 +366,25 @@ class HomePage extends StatelessWidget {
   }
 
   void _push(BuildContext context, Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 380),
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (_, a, __) => page,
+        transitionsBuilder: (_, a, __, child) {
+          final curved = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween(begin: const Offset(0, 0.04), end: Offset.zero)
+                  .animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -405,54 +396,20 @@ class _NetworkSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        appState.switchNetwork(
-          appState.network == Network.mainnet
-              ? Network.testnet
-              : Network.mainnet,
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: appState.network == Network.mainnet
-              ? NearTheme.green.withValues(alpha: 0.1)
-              : NearTheme.greyLight,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: appState.network == Network.mainnet
-                    ? NearTheme.green
-                    : NearTheme.grey,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              appState.networkName,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: appState.network == Network.mainnet
-                    ? NearTheme.green
-                    : NearTheme.greyDark,
-              ),
-            ),
-          ],
-        ),
+    final mainnet = appState.network == Network.mainnet;
+    return PressFx(
+      onTap: () => appState.switchNetwork(
+        mainnet ? Network.testnet : Network.mainnet,
+      ),
+      child: GlassChip(
+        label: appState.networkName.toUpperCase(),
+        color: mainnet ? Near.mint : const Color(0xFFFFC861),
       ),
     );
   }
 }
 
-// Feature Card
+// Feature Card — frosted glass row with mint accent for featured items.
 class _FeatureCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -470,76 +427,58 @@ class _FeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: featured ? NearTheme.green : NearTheme.greyLight,
-            width: featured ? 2 : 1,
-          ),
-          color: featured
-              ? NearTheme.green.withValues(alpha: 0.05)
-              : NearTheme.white,
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: featured
-                        ? NearTheme.green.withValues(alpha: 0.15)
-                        : NearTheme.greyLight,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: featured ? NearTheme.green : NearTheme.black,
-                    size: 22,
-                  ),
+    return PressFx(
+      onTap: onTap,
+      child: GlassPanel(
+        padding: const EdgeInsets.all(16),
+        strong: featured,
+        glow: featured ? Near.mint : null,
+        borderColor: featured ? Near.mint.withValues(alpha: 0.45) : null,
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: featured
+                    ? Near.mint.withValues(alpha: 0.16)
+                    : Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: featured
+                      ? Near.mint.withValues(alpha: 0.4)
+                      : Near.glassBorder,
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: featured ? NearTheme.green : NearTheme.black,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(color: NearTheme.grey, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right,
-                  color: featured ? NearTheme.green : NearTheme.grey,
-                ),
-              ],
+              ),
+              child: Icon(icon,
+                  color: featured ? Near.mint : Near.textPrimary, size: 22),
             ),
-          ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: Near.body(15.5,
+                          w: FontWeight.w700,
+                          color: featured ? Near.mint : Near.textPrimary)),
+                  const SizedBox(height: 3),
+                  Text(subtitle,
+                      style: Near.body(12.5, color: Near.textMuted)),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_outward_rounded,
+                size: 18,
+                color: featured ? Near.mint : Near.textMuted),
+          ],
         ),
       ),
     );
   }
 }
 
-// Base Page Template - Rebuilds when network changes
+// Base Page — frosted app bar over the living glass canvas.
 class _BasePage extends StatelessWidget {
   final String title;
   final AppState appState;
@@ -558,35 +497,12 @@ class _BasePage extends StatelessWidget {
       builder: (context, _) {
         return Scaffold(
           appBar: AppBar(
-            title: Row(
-              children: [
-                Text(title),
-                const SizedBox(width: 8),
-                // Network badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: appState.network == Network.mainnet
-                        ? NearTheme.green.withValues(alpha: 0.2)
-                        : NearTheme.greyLight,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    appState.networkName,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: appState.network == Network.mainnet
-                          ? NearTheme.green
-                          : NearTheme.grey,
-                    ),
-                  ),
-                ),
-              ],
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+              onPressed: () => Navigator.maybePop(context),
             ),
+            titleSpacing: 0,
+            title: Text(title, style: Near.display(18)),
             actions: [
               _NetworkSwitch(appState: appState),
               const SizedBox(width: 16),
@@ -599,7 +515,7 @@ class _BasePage extends StatelessWidget {
   }
 }
 
-// Result Display Widget
+// Result card — glass panel with copy action + mono key/value rows.
 class _ResultCard extends StatelessWidget {
   final String title;
   final Map<String, dynamic> data;
@@ -608,74 +524,75 @@ class _ResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+    return GlassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Near.mint,
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.copy, size: 18),
-                  onPressed: () {
-                    Clipboard.setData(
-                      ClipboardData(
-                        text: const JsonEncoder.withIndent('  ').convert(data),
-                      ),
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied to clipboard')),
-                    );
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...data.entries.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 120,
-                      child: Text(
-                        e.key,
-                        style: TextStyle(color: NearTheme.grey, fontSize: 13),
-                      ),
+                  const SizedBox(width: 8),
+                  Text(title,
+                      style: Near.body(13.5,
+                          w: FontWeight.w700, color: Near.textPrimary)),
+                ],
+              ),
+              PressFx(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(
+                    text: const JsonEncoder.withIndent('  ').convert(data),
+                  ));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: Near.ink,
+                      content: Text('Copied',
+                          style: Near.body(13, color: Near.mint)),
+                      duration: const Duration(seconds: 1),
                     ),
-                    Expanded(
-                      child: Text(
-                        '${e.value}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                },
+                child: const Icon(Icons.copy_rounded,
+                    size: 16, color: Near.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...data.entries.map(
+            (e) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 140,
+                    child: Text(e.key,
+                        style: Near.mono(11.5, color: Near.textMuted)),
+                  ),
+                  Expanded(
+                    child: Text('${e.value}',
+                        style: Near.mono(12, color: Near.textPrimary)),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// Loading Button
+// Loading button — alias to the glass primary button.
 class _LoadButton extends StatelessWidget {
   final String label;
   final bool isLoading;
@@ -688,33 +605,14 @@ class _LoadButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: isLoading ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: NearTheme.black,
-          foregroundColor: NearTheme.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: NearTheme.white,
-                ),
-              )
-            : Text(label),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => GlassButton(
+        label: label,
+        loading: isLoading,
+        onPressed: onPressed,
+      );
 }
 
-// Error Display
+// Error card — danger-tinted glass.
 class _ErrorCard extends StatelessWidget {
   final String message;
 
@@ -722,22 +620,18 @@ class _ErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.red.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(color: Colors.red.shade700, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
+    return GlassPanel(
+      padding: const EdgeInsets.all(14),
+      borderColor: Near.danger.withValues(alpha: 0.4),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: Near.danger, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(message, style: Near.body(13, color: Near.danger)),
+          ),
+        ],
       ),
     );
   }
