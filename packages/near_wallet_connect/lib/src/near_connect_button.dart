@@ -37,7 +37,10 @@ class NearConnectButton extends StatelessWidget {
         final account = controller.account;
         if (account != null) {
           onConnected?.call(account.accountId.value);
-          return _ConnectedChip(controller: controller, accountId: account.accountId.value);
+          return _ConnectedChip(
+            controller: controller,
+            accountId: account.accountId.value,
+          );
         }
         return FilledButton.icon(
           onPressed: controller.busy ? null : controller.connect,

@@ -70,10 +70,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: _addMessage,
                   child: const Text('Sign a contract call (local)'),
                 ),
-              if (_result != null) Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(_result!),
-              ),
+              if (_result != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(_result!),
+                ),
             ],
           ),
         ),

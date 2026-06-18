@@ -40,7 +40,8 @@ class NearWalletController extends ChangeNotifier {
     KeyStore? keyStore,
     NearRpcClient? client,
   }) : keyStore = keyStore ?? SharedPrefsKeyStore(),
-       client = client ??
+       client =
+           client ??
            (network == MyNearWalletNetwork.mainnet
                ? NearRpcClient.mainnet()
                : NearRpcClient.testnet());

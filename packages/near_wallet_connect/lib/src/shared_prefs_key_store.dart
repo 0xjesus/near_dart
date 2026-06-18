@@ -54,7 +54,11 @@ class SharedPrefsKeyStore implements KeyStore {
   Future<List<AccountId>> accounts() async {
     final raw = (await _prefs).getString(_accountsKey);
     if (raw == null || raw.isEmpty) return [];
-    return raw.split(',').where((s) => s.isNotEmpty).map(AccountId.new).toList();
+    return raw
+        .split(',')
+        .where((s) => s.isNotEmpty)
+        .map(AccountId.new)
+        .toList();
   }
 
   @override
