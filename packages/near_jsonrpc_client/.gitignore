@@ -1,0 +1,10 @@
+.dart_tool/
+.packages
+pubspec.lock
+build/
+
+# The generated RPC client IS committed here — it is the published deliverable
+# and the CI drift-check compares against it. (Overrides the repo-root
+# `*.g.dart` ignore.)
+!lib/src/models.g.dart
+!lib/src/client.g.dart
