@@ -1,0 +1,59 @@
+name: Sync NEAR OpenAPI client
+
+# Keeps packages/near_jsonrpc_client in sync with nearcore's published
+# OpenAPI spec: re-fetches the spec, regenerates the typed client, and opens
+# a PR if anything changed.
+on:
+  schedule:
+    - cron: '0 7 * * 1' # weekly, Mondays 07:00 UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Regenerate from upstream spec
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/near_jsonrpc_client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Fetch latest nearcore OpenAPI spec
+        run: |
+          curl -fsSL \
+            https://raw.githubusercontent.com/near/nearcore/master/chain/jsonrpc/openapi/openapi.json \
+            -o tool/openapi.json
+
+      - name: Install deps & regenerate
+        run: |
+          dart pub get
+          dart run tool/generate.dart
+          dart format lib/src/models.g.dart lib/src/client.g.dart
+
+      - name: Verify the regenerated client still analyzes & builds
+        run: dart analyze
+
+      - name: Open a PR if the generated client changed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: 'chore: sync NEAR JSON-RPC client with upstream OpenAPI spec'
+          title: 'chore: sync NEAR JSON-RPC client with upstream OpenAPI spec'
+          body: |
+            Automated regeneration of `near_jsonrpc_client` from the latest
+            nearcore OpenAPI spec.
+
+            - Re-fetched `chain/jsonrpc/openapi/openapi.json`
+            - Re-ran `dart run tool/generate.dart`
+            - `dart analyze` passed
+
+            Review the diff in `lib/src/*.g.dart` and `tool/openapi.json`.
+          branch: chore/sync-openapi
+          delete-branch: true
+          add-paths: |
+            packages/near_jsonrpc_client/tool/openapi.json
+            packages/near_jsonrpc_client/lib/src/models.g.dart
+            packages/near_jsonrpc_client/lib/src/client.g.dart

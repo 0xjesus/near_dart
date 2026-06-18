@@ -1,0 +1,22 @@
+name: near_jsonrpc_client
+description: >-
+  Type-safe NEAR Protocol JSON-RPC client for Dart, generated from the
+  official nearcore OpenAPI spec. Runs identically on native (AOT) and web (JS).
+version: 0.1.0
+homepage: https://0xj.dev
+repository: https://github.com/0xjesus/near_dart
+topics:
+  - near
+  - blockchain
+  - rpc
+  - openapi
+  - web3
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  http: ^1.3.0
+
+dev_dependencies:
+  test: ^1.25.8
