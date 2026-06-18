@@ -1,0 +1,19 @@
+.dart_tool/
+.packages
+pubspec.lock
+build/
+
+# The example's generated platform scaffolding is regenerable with
+# `flutter create --platforms=web,android,ios .` — keep only its source.
+example/android/
+example/ios/
+example/web/
+example/linux/
+example/macos/
+example/windows/
+example/.dart_tool/
+example/build/
+example/pubspec.lock
+example/.metadata
+.flutter-plugins
+.flutter-plugins-dependencies
