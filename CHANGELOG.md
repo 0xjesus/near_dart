@@ -1,3 +1,13 @@
+## 0.2.1
+
+- Docs: "Verified on real devices & chains" — recorded Android-emulator + web
+  evidence and the explorer tx for the on-chain demos.
+- Example: full "NEAR Terminal" glassmorphism redesign of the reference app
+  (animated dark glass, NEAR branding), verified on web and Android.
+- Tests: updated testnet integration tests for real 2026 RPC provider behavior
+  (FastNear empty key lists, TOO_LARGE_CONTRACT_STATE).
+- dartdoc: fixed unresolved references (now 0 warnings).
+
 ## 0.2.0
 
 The release that makes near_dart a **full SDK**: local signing and
