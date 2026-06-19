@@ -39,7 +39,9 @@ class NearTheme {
   static const white = Near.textPrimary; // foreground text/icons
   static const green = Near.mint;
   static const grey = Near.textMuted;
-  static final greyLight = Colors.white.withValues(alpha: 0.08); // fills/borders
+  static final greyLight = Colors.white.withValues(
+    alpha: 0.08,
+  ); // fills/borders
   static const greyDark = Near.textMuted;
 }
 
@@ -201,9 +203,13 @@ class _NearSdkDemoState extends State<NearSdkDemo> {
               surface: Near.ink,
               brightness: Brightness.dark,
             ),
-            textTheme: GoogleFonts.hankenGroteskTextTheme(
-              ThemeData.dark().textTheme,
-            ).apply(bodyColor: Near.textPrimary, displayColor: Near.textPrimary),
+            textTheme:
+                GoogleFonts.hankenGroteskTextTheme(
+                  ThemeData.dark().textTheme,
+                ).apply(
+                  bodyColor: Near.textPrimary,
+                  displayColor: Near.textPrimary,
+                ),
             appBarTheme: AppBarTheme(
               backgroundColor: Colors.transparent,
               foregroundColor: Near.textPrimary,
@@ -226,8 +232,10 @@ class _NearSdkDemoState extends State<NearSdkDemo> {
                 borderRadius: BorderRadius.circular(14),
                 borderSide: const BorderSide(color: Near.mint, width: 1.4),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
           ),
           // Living glass canvas behind everything, content centered to a
@@ -251,8 +259,13 @@ class _NearSdkDemoState extends State<NearSdkDemo> {
 
 // Home feature descriptor
 class _Feature {
-  const _Feature(this.icon, this.title, this.subtitle, this.build,
-      {this.featured = false});
+  const _Feature(
+    this.icon,
+    this.title,
+    this.subtitle,
+    this.build, {
+    this.featured = false,
+  });
   final IconData icon;
   final String title;
   final String subtitle;
@@ -270,43 +283,91 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final testnet = appState.network == Network.testnet;
     final features = <_Feature>[
-      _Feature(Icons.bolt, 'Sign & Send', 'Local key → Borsh → send_tx, on-chain',
-          () => LocalSigningPage(appState: appState), featured: true),
-      _Feature(Icons.account_balance_wallet_outlined, 'Connect Wallet',
-          'MyNearWallet redirect, then sign locally',
-          () => ConnectWalletPage(
-                isTestnet: testnet,
-                contractId: testnet
-                    ? 'guestbook.near-examples.testnet'
-                    : 'social.near',
-              ),
-          featured: true),
-      _Feature(Icons.wifi, 'Network Status', 'status() — node, sync, protocol',
-          () => NetworkStatusPage(appState: appState)),
-      _Feature(Icons.account_circle_outlined, 'Account Explorer',
-          'viewAccount() — balance, storage, code',
-          () => AccountExplorerPage(appState: appState)),
-      _Feature(Icons.key_outlined, 'Access Keys',
-          'viewAccessKeyList() — full & function-call',
-          () => AccessKeysPage(appState: appState)),
-      _Feature(Icons.code, 'Contract Calls',
-          'callFunction() — ft_metadata, balances',
-          () => ContractCallsPage(appState: appState)),
-      _Feature(Icons.how_to_vote_outlined, 'Validators',
-          'validators() — epoch, stake', () => ValidatorsPage(appState: appState)),
-      _Feature(Icons.view_in_ar_outlined, 'Block Explorer',
-          'block() — header, chunks', () => BlockExplorerPage(appState: appState)),
-      _Feature(Icons.local_gas_station_outlined, 'Gas Price',
-          'gasPrice() — yoctoNEAR/gas', () => GasPricePage(appState: appState)),
-      _Feature(Icons.data_object, 'Code & State',
-          'viewCode(), viewState()', () => CodeStatePage(appState: appState)),
-      _Feature(Icons.send_outlined, 'Transaction Builder',
-          'Build & serialize actions',
-          () => TransactionBuilderPage(appState: appState)),
-      _Feature(Icons.link, 'Wallet URLs', 'MyNearWallet URL building',
-          () => WalletUrlPage(appState: appState)),
-      _Feature(Icons.web, 'Legacy WebView', 'Embedded flow — mobile only',
-          () => WalletConnectPage(appState: appState)),
+      _Feature(
+        Icons.bolt,
+        'Sign & Send',
+        'Local key → Borsh → send_tx, on-chain',
+        () => LocalSigningPage(appState: appState),
+        featured: true,
+      ),
+      _Feature(
+        Icons.account_balance_wallet_outlined,
+        'Connect Wallet',
+        'MyNearWallet redirect, then sign locally',
+        () => ConnectWalletPage(
+          isTestnet: testnet,
+          contractId: testnet
+              ? 'guestbook.near-examples.testnet'
+              : 'social.near',
+        ),
+        featured: true,
+      ),
+      _Feature(
+        Icons.wifi,
+        'Network Status',
+        'status() — node, sync, protocol',
+        () => NetworkStatusPage(appState: appState),
+      ),
+      _Feature(
+        Icons.account_circle_outlined,
+        'Account Explorer',
+        'viewAccount() — balance, storage, code',
+        () => AccountExplorerPage(appState: appState),
+      ),
+      _Feature(
+        Icons.key_outlined,
+        'Access Keys',
+        'viewAccessKeyList() — full & function-call',
+        () => AccessKeysPage(appState: appState),
+      ),
+      _Feature(
+        Icons.code,
+        'Contract Calls',
+        'callFunction() — ft_metadata, balances',
+        () => ContractCallsPage(appState: appState),
+      ),
+      _Feature(
+        Icons.how_to_vote_outlined,
+        'Validators',
+        'validators() — epoch, stake',
+        () => ValidatorsPage(appState: appState),
+      ),
+      _Feature(
+        Icons.view_in_ar_outlined,
+        'Block Explorer',
+        'block() — header, chunks',
+        () => BlockExplorerPage(appState: appState),
+      ),
+      _Feature(
+        Icons.local_gas_station_outlined,
+        'Gas Price',
+        'gasPrice() — yoctoNEAR/gas',
+        () => GasPricePage(appState: appState),
+      ),
+      _Feature(
+        Icons.data_object,
+        'Code & State',
+        'viewCode(), viewState()',
+        () => CodeStatePage(appState: appState),
+      ),
+      _Feature(
+        Icons.send_outlined,
+        'Transaction Builder',
+        'Build & serialize actions',
+        () => TransactionBuilderPage(appState: appState),
+      ),
+      _Feature(
+        Icons.link,
+        'Wallet URLs',
+        'MyNearWallet URL building',
+        () => WalletUrlPage(appState: appState),
+      ),
+      _Feature(
+        Icons.web,
+        'Legacy WebView',
+        'Embedded flow — mobile only',
+        () => WalletConnectPage(appState: appState),
+      ),
     ];
 
     return Scaffold(
@@ -326,8 +387,10 @@ class HomePage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('NEAR', style: Near.display(26)),
-                        Text('Flutter SDK',
-                            style: Near.mono(12, color: Near.textMuted)),
+                        Text(
+                          'Flutter SDK',
+                          style: Near.mono(12, color: Near.textMuted),
+                        ),
                       ],
                     ),
                   ),
@@ -377,8 +440,10 @@ class HomePage extends StatelessWidget {
           return FadeTransition(
             opacity: curved,
             child: SlideTransition(
-              position: Tween(begin: const Offset(0, 0.04), end: Offset.zero)
-                  .animate(curved),
+              position: Tween(
+                begin: const Offset(0, 0.04),
+                end: Offset.zero,
+              ).animate(curved),
               child: child,
             ),
           );
@@ -398,9 +463,8 @@ class _NetworkSwitch extends StatelessWidget {
   Widget build(BuildContext context) {
     final mainnet = appState.network == Network.mainnet;
     return PressFx(
-      onTap: () => appState.switchNetwork(
-        mainnet ? Network.testnet : Network.mainnet,
-      ),
+      onTap: () =>
+          appState.switchNetwork(mainnet ? Network.testnet : Network.mainnet),
       child: GlassChip(
         label: appState.networkName.toUpperCase(),
         color: mainnet ? Near.mint : const Color(0xFFFFC861),
@@ -450,27 +514,35 @@ class _FeatureCard extends StatelessWidget {
                       : Near.glassBorder,
                 ),
               ),
-              child: Icon(icon,
-                  color: featured ? Near.mint : Near.textPrimary, size: 22),
+              child: Icon(
+                icon,
+                color: featured ? Near.mint : Near.textPrimary,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: Near.body(15.5,
-                          w: FontWeight.w700,
-                          color: featured ? Near.mint : Near.textPrimary)),
+                  Text(
+                    title,
+                    style: Near.body(
+                      15.5,
+                      w: FontWeight.w700,
+                      color: featured ? Near.mint : Near.textPrimary,
+                    ),
+                  ),
                   const SizedBox(height: 3),
-                  Text(subtitle,
-                      style: Near.body(12.5, color: Near.textMuted)),
+                  Text(subtitle, style: Near.body(12.5, color: Near.textMuted)),
                 ],
               ),
             ),
-            Icon(Icons.arrow_outward_rounded,
-                size: 18,
-                color: featured ? Near.mint : Near.textMuted),
+            Icon(
+              Icons.arrow_outward_rounded,
+              size: 18,
+              color: featured ? Near.mint : Near.textMuted,
+            ),
           ],
         ),
       ),
@@ -542,27 +614,39 @@ class _ResultCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(title,
-                      style: Near.body(13.5,
-                          w: FontWeight.w700, color: Near.textPrimary)),
+                  Text(
+                    title,
+                    style: Near.body(
+                      13.5,
+                      w: FontWeight.w700,
+                      color: Near.textPrimary,
+                    ),
+                  ),
                 ],
               ),
               PressFx(
                 onTap: () {
-                  Clipboard.setData(ClipboardData(
-                    text: const JsonEncoder.withIndent('  ').convert(data),
-                  ));
+                  Clipboard.setData(
+                    ClipboardData(
+                      text: const JsonEncoder.withIndent('  ').convert(data),
+                    ),
+                  );
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       backgroundColor: Near.ink,
-                      content: Text('Copied',
-                          style: Near.body(13, color: Near.mint)),
+                      content: Text(
+                        'Copied',
+                        style: Near.body(13, color: Near.mint),
+                      ),
                       duration: const Duration(seconds: 1),
                     ),
                   );
                 },
-                child: const Icon(Icons.copy_rounded,
-                    size: 16, color: Near.textMuted),
+                child: const Icon(
+                  Icons.copy_rounded,
+                  size: 16,
+                  color: Near.textMuted,
+                ),
               ),
             ],
           ),
@@ -575,12 +659,16 @@ class _ResultCard extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: 140,
-                    child: Text(e.key,
-                        style: Near.mono(11.5, color: Near.textMuted)),
+                    child: Text(
+                      e.key,
+                      style: Near.mono(11.5, color: Near.textMuted),
+                    ),
                   ),
                   Expanded(
-                    child: Text('${e.value}',
-                        style: Near.mono(12, color: Near.textPrimary)),
+                    child: Text(
+                      '${e.value}',
+                      style: Near.mono(12, color: Near.textPrimary),
+                    ),
                   ),
                 ],
               ),
@@ -605,11 +693,8 @@ class _LoadButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GlassButton(
-        label: label,
-        loading: isLoading,
-        onPressed: onPressed,
-      );
+  Widget build(BuildContext context) =>
+      GlassButton(label: label, loading: isLoading, onPressed: onPressed);
 }
 
 // Error card — danger-tinted glass.
@@ -625,8 +710,7 @@ class _ErrorCard extends StatelessWidget {
       borderColor: Near.danger.withValues(alpha: 0.4),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded,
-              color: Near.danger, size: 20),
+          const Icon(Icons.error_outline_rounded, color: Near.danger, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(message, style: Near.body(13, color: Near.danger)),

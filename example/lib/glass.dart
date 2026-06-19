@@ -30,12 +30,38 @@ class Near {
   static Color glassEdgeLight = Colors.white.withValues(alpha: 0.22);
 
   // Type scale
-  static TextStyle display(double size, {Color? color, FontWeight w = FontWeight.w700}) =>
-      GoogleFonts.unbounded(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.05, letterSpacing: -0.5);
-  static TextStyle body(double size, {Color? color, FontWeight w = FontWeight.w400}) =>
-      GoogleFonts.hankenGrotesk(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.35);
-  static TextStyle mono(double size, {Color? color, FontWeight w = FontWeight.w500}) =>
-      GoogleFonts.jetBrainsMono(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.4, letterSpacing: -0.2);
+  static TextStyle display(
+    double size, {
+    Color? color,
+    FontWeight w = FontWeight.w700,
+  }) => GoogleFonts.unbounded(
+    fontSize: size,
+    fontWeight: w,
+    color: color ?? textPrimary,
+    height: 1.05,
+    letterSpacing: -0.5,
+  );
+  static TextStyle body(
+    double size, {
+    Color? color,
+    FontWeight w = FontWeight.w400,
+  }) => GoogleFonts.hankenGrotesk(
+    fontSize: size,
+    fontWeight: w,
+    color: color ?? textPrimary,
+    height: 1.35,
+  );
+  static TextStyle mono(
+    double size, {
+    Color? color,
+    FontWeight w = FontWeight.w500,
+  }) => GoogleFonts.jetBrainsMono(
+    fontSize: size,
+    fontWeight: w,
+    color: color ?? textPrimary,
+    height: 1.4,
+    letterSpacing: -0.2,
+  );
 }
 
 /// A living dark canvas: slowly drifting, heavily-blurred mint ambient lights
@@ -45,14 +71,16 @@ class AnimatedGlassBackground extends StatefulWidget {
   final Widget child;
 
   @override
-  State<AnimatedGlassBackground> createState() => _AnimatedGlassBackgroundState();
+  State<AnimatedGlassBackground> createState() =>
+      _AnimatedGlassBackgroundState();
 }
 
 class _AnimatedGlassBackgroundState extends State<AnimatedGlassBackground>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(seconds: 24))
-        ..repeat();
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 24),
+  )..repeat();
 
   @override
   void dispose() {
@@ -73,12 +101,27 @@ class _AnimatedGlassBackgroundState extends State<AnimatedGlassBackground>
               final t = _c.value * 2 * math.pi;
               return Stack(
                 children: [
-                  _orb(math.sin(t) * 0.30 + 0.18, math.cos(t * 0.8) * 0.18 + 0.10,
-                      Near.mint, 340, 0.16),
-                  _orb(math.cos(t * 0.7) * 0.30 + 0.78, math.sin(t) * 0.20 + 0.30,
-                      Near.teal, 420, 0.30),
-                  _orb(math.sin(t * 1.1) * 0.22 + 0.55, math.cos(t) * 0.22 + 0.85,
-                      Near.mint, 300, 0.10),
+                  _orb(
+                    math.sin(t) * 0.30 + 0.18,
+                    math.cos(t * 0.8) * 0.18 + 0.10,
+                    Near.mint,
+                    340,
+                    0.16,
+                  ),
+                  _orb(
+                    math.cos(t * 0.7) * 0.30 + 0.78,
+                    math.sin(t) * 0.20 + 0.30,
+                    Near.teal,
+                    420,
+                    0.30,
+                  ),
+                  _orb(
+                    math.sin(t * 1.1) * 0.22 + 0.55,
+                    math.cos(t) * 0.22 + 0.85,
+                    Near.mint,
+                    300,
+                    0.10,
+                  ),
                 ],
               );
             },
@@ -170,7 +213,11 @@ class GlassPanel extends StatelessWidget {
             offset: const Offset(0, 18),
           ),
           if (glow != null)
-            BoxShadow(color: glow!.withValues(alpha: 0.22), blurRadius: 34, spreadRadius: -6),
+            BoxShadow(
+              color: glow!.withValues(alpha: 0.22),
+              blurRadius: 34,
+              spreadRadius: -6,
+            ),
         ],
       ),
       child: child,
@@ -204,8 +251,10 @@ class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
     vsync: this,
     duration: const Duration(milliseconds: 520),
   );
-  late final Animation<double> _a =
-      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+  late final Animation<double> _a = CurvedAnimation(
+    parent: _c,
+    curve: Curves.easeOutCubic,
+  );
 
   @override
   void initState() {
@@ -239,7 +288,12 @@ class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
 
 /// Press-responsive wrapper: subtle scale-down + optional mint glow on tap.
 class PressFx extends StatefulWidget {
-  const PressFx({super.key, required this.child, this.onTap, this.scale = 0.97});
+  const PressFx({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.scale = 0.97,
+  });
   final Widget child;
   final VoidCallback? onTap;
   final double scale;
@@ -281,7 +335,11 @@ class NearMark extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.28),
         border: Border.all(color: Near.mint.withValues(alpha: 0.5), width: 1.2),
         boxShadow: [
-          BoxShadow(color: Near.mint.withValues(alpha: 0.25), blurRadius: 18, spreadRadius: -4),
+          BoxShadow(
+            color: Near.mint.withValues(alpha: 0.25),
+            blurRadius: 18,
+            spreadRadius: -4,
+          ),
         ],
       ),
       child: CustomPaint(painter: _NPainter()),
@@ -342,11 +400,16 @@ class GlassButton extends StatelessWidget {
               ? Near.mint.withValues(alpha: disabled ? 0.25 : 1)
               : Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(16),
-          border: filled
-              ? null
-              : Border.all(color: Near.glassBorder, width: 1),
+          border: filled ? null : Border.all(color: Near.glassBorder, width: 1),
           boxShadow: filled && !disabled
-              ? [BoxShadow(color: Near.mint.withValues(alpha: 0.35), blurRadius: 26, spreadRadius: -6, offset: const Offset(0, 8))]
+              ? [
+                  BoxShadow(
+                    color: Near.mint.withValues(alpha: 0.35),
+                    blurRadius: 26,
+                    spreadRadius: -6,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
               : null,
         ),
         child: Row(
@@ -358,7 +421,9 @@ class GlassButton extends StatelessWidget {
                 height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.2,
-                  valueColor: AlwaysStoppedAnimation(filled ? Near.canvas : Near.mint),
+                  valueColor: AlwaysStoppedAnimation(
+                    filled ? Near.canvas : Near.mint,
+                  ),
                 ),
               )
             else ...[
@@ -368,7 +433,11 @@ class GlassButton extends StatelessWidget {
               ],
               Text(
                 label,
-                style: Near.body(15, w: FontWeight.w700, color: filled ? Near.canvas : Near.mint),
+                style: Near.body(
+                  15,
+                  w: FontWeight.w700,
+                  color: filled ? Near.canvas : Near.mint,
+                ),
               ),
             ],
           ],
@@ -380,7 +449,12 @@ class GlassButton extends StatelessWidget {
 
 /// A subtle pill chip (e.g. network badge).
 class GlassChip extends StatelessWidget {
-  const GlassChip({super.key, required this.label, this.color = Near.mint, this.dot = true});
+  const GlassChip({
+    super.key,
+    required this.label,
+    this.color = Near.mint,
+    this.dot = true,
+  });
   final String label;
   final Color color;
   final bool dot;
@@ -397,10 +471,21 @@ class GlassChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (dot) ...[
-            Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: color, boxShadow: [BoxShadow(color: color, blurRadius: 8)])),
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                boxShadow: [BoxShadow(color: color, blurRadius: 8)],
+              ),
+            ),
             const SizedBox(width: 7),
           ],
-          Text(label, style: Near.mono(11, color: color, w: FontWeight.w600)),
+          Text(
+            label,
+            style: Near.mono(11, color: color, w: FontWeight.w600),
+          ),
         ],
       ),
     );
