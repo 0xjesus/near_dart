@@ -7,6 +7,12 @@ Complete NEAR Protocol SDK for Flutter/Dart.
 
 A type-safe, platform-agnostic SDK for building NEAR Protocol applications with Flutter and Dart. Works on iOS, Android, Web, and Desktop.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/0xjesus/near_dart/main/docs/demo/glass-android.gif" alt="NEAR Flutter SDK demo on Android" width="240"/>
+</p>
+
+<p align="center"><em>The example app — local Sign &amp; Send and wallet connect — running on Android.</em></p>
+
 ## Features
 
 - **Local Signing & Sending**: ed25519 key pairs, Borsh serialization, `send_tx` broadcasting — byte-for-byte compatible with near-api-js

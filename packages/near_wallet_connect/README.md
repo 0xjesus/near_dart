@@ -6,6 +6,10 @@ Drop-in **NEAR wallet connection for Flutter** — adaptive connect (web
 redirect, mobile deep links), persistent key storage, and a ready-made
 `NearConnectButton`. Built on [`near_dart`](https://pub.dev/packages/near_dart).
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/0xjesus/near_dart/main/docs/demo/glass-android.gif" alt="NEAR Flutter demo on Android" width="240"/>
+</p>
+
 Connecting provisions a **function-call key** and stores it, so afterward you
 sign contract calls **locally — no more redirects**.
 
