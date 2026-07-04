@@ -82,5 +82,6 @@ export 'src/wallet/actions.dart';
 export 'src/wallet/transaction.dart';
 export 'src/wallet/execution_outcome.dart';
 export 'src/wallet/wallet_adapter.dart';
+export 'src/wallet/nep413.dart';
 export 'src/wallet/adapters/wallet_connect_adapter.dart';
 export 'src/wallet/adapters/my_near_wallet_adapter.dart';
