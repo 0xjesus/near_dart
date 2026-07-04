@@ -350,8 +350,16 @@ class MyNearWalletAdapter implements WalletAdapter {
   }
 
   /// Handles a sign message callback from MyNearWallet.
+  ///
+  /// The wallet returns `accountId`/`publicKey`/`signature` in the URL
+  /// **hash fragment** (`callback#accountId=…`); older flows used query
+  /// parameters. Both are accepted, with fragment values winning.
   SignedMessage handleSignMessageCallback(Uri callbackUri) {
-    final params = callbackUri.queryParameters;
+    final params = {
+      ...callbackUri.queryParameters,
+      if (callbackUri.fragment.isNotEmpty)
+        ...Uri.splitQueryString(callbackUri.fragment),
+    };
 
     return SignedMessage(
       accountId: AccountId(

@@ -1,3 +1,10 @@
+## 0.3.1
+
+- Fix: `MyNearWalletAdapter.handleSignMessageCallback` now parses the
+  wallet's result from the URL **hash fragment** (`callback#accountId=…`),
+  which is how MyNearWallet's `/sign-message` redirect returns it. Query
+  parameters are still accepted.
+
 ## 0.3.0
 
 - **NEP-413 message signing** (`Nep413Payload`, `signNep413Message`,

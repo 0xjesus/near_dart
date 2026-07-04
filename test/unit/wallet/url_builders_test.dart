@@ -44,6 +44,55 @@ void main() {
     });
   });
 
+  group('handleSignMessageCallback', () {
+    late MyNearWalletAdapter adapter;
+
+    setUp(() {
+      adapter = MyNearWalletAdapter(
+        config: MyNearWalletConfig(
+          contractId: AccountId('contract.testnet'),
+          successUrl: 'myapp://wallet/success',
+          failureUrl: 'myapp://wallet/failure',
+          network: MyNearWalletNetwork.testnet,
+        ),
+        launchUrl: (_) async => true,
+      );
+    });
+
+    test('parses the result from the URL hash fragment (redirect flow)', () {
+      // MyNearWallet's SignMessageWrapper returns the result via
+      // addHashParams: callback#accountId=…&publicKey=…&signature=…
+      final signed = adapter.handleSignMessageCallback(
+        Uri.parse(
+          'myapp://wallet/success'
+          '#accountId=alice.testnet'
+          '&publicKey=ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'
+          '&signature=${Uri.encodeComponent(base64Encode(List.filled(64, 7)))}',
+        ),
+      );
+
+      expect(signed.accountId.value, 'alice.testnet');
+      expect(
+        signed.publicKey.value,
+        'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+      );
+      expect(signed.signature, base64Encode(List.filled(64, 7)));
+    });
+
+    test('still accepts query parameters, fragment wins on conflict', () {
+      final signed = adapter.handleSignMessageCallback(
+        Uri.parse(
+          'myapp://wallet/success?accountId=old.testnet&state=s1'
+          '#accountId=new.testnet&signature=sig',
+        ),
+      );
+
+      expect(signed.accountId.value, 'new.testnet');
+      expect(signed.state, 's1');
+      expect(signed.signature, 'sig');
+    });
+  });
+
   group('MyNearWalletAdapter URL Building', () {
     late MyNearWalletAdapter mainnetAdapter;
     late MyNearWalletAdapter testnetAdapter;
