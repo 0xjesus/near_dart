@@ -1,3 +1,16 @@
+## 0.2.0
+
+- **Multi-wallet support**: `NearConnectButton` now opens a wallet picker —
+  MyNearWallet, **Intear** (testnet + mainnet) and **HOT** (mainnet). The new
+  wallets are additional options; MyNearWallet remains fully supported until
+  its announced sunset (October 31, 2026).
+- **One unified API** on `NearWalletController`, whatever the wallet:
+  `connect(wallet: …)`, `signer()` (local function-call key),
+  `signMessage(…)` (NEP-413) and `sendTransactions(…)`.
+- The connected wallet is persisted and restored across app restarts
+  (`walletOption`).
+- Requires `near_dart ^0.3.0`.
+
 ## 0.1.1
 
 - Docs: add an Android demo GIF to the README.

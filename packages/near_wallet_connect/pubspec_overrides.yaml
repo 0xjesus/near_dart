@@ -1,0 +1,4 @@
+# Local development against the in-repo near_dart (ignored by `pub publish`).
+dependency_overrides:
+  near_dart:
+    path: ../..

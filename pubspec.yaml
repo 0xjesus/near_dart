@@ -1,6 +1,6 @@
 name: near_dart
 description: Complete NEAR Protocol SDK for Flutter/Dart. RPC client, wallet integration, and type-safe primitives.
-version: 0.2.2
+version: 0.3.0
 homepage: https://0xj.dev
 repository: https://github.com/0xjesus/near_dart
 issue_tracker: https://github.com/0xjesus/near_dart/issues

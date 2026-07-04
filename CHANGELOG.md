@@ -1,3 +1,19 @@
+## 0.3.0
+
+- **NEP-413 message signing** (`Nep413Payload`, `signNep413Message`,
+  `generateNep413Nonce`) — "Sign in with NEAR" without a transaction,
+  hash-validated byte-for-byte against near-kit and verified live against a
+  better-near-auth API.
+- **Intear Wallet adapter** (`IntearWalletAdapter`) — native-app connect,
+  NEP-413 signing and wallet-signed transactions via Intear's WebSocket
+  bridge + `intear://` deep links. Testnet supported.
+- **HOT Wallet adapter** (`HotWalletAdapter`) — connect, NEP-413 signing and
+  wallet-signed transactions via HOT's HTTP relay + `hotwallet://` deep
+  links. Mainnet only.
+- MyNearWallet remains fully supported — the new wallets are additional
+  options ahead of MNW's announced sunset (October 31, 2026).
+- New dependency: `web_socket_channel`.
+
 ## 0.2.2
 
 - Docs: add an Android demo GIF (glass example app) to the README.
