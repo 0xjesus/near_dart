@@ -303,6 +303,13 @@ class HomePage extends StatelessWidget {
         featured: true,
       ),
       _Feature(
+        Icons.login,
+        'Sign in with NEAR',
+        'NEP-413 session auth vs a live API',
+        () => SignInWithNearPage(appState: appState),
+        featured: true,
+      ),
+      _Feature(
         Icons.wifi,
         'Network Status',
         'status() — node, sync, protocol',
@@ -3767,6 +3774,358 @@ class _WalletWebViewPageState extends State<_WalletWebViewPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sign in with NEAR (NEP-413 → better-near-auth)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SignInWithNearPage extends StatefulWidget {
+  final AppState appState;
+  const SignInWithNearPage({super.key, required this.appState});
+
+  @override
+  State<SignInWithNearPage> createState() => _SignInWithNearPageState();
+}
+
+class _SiwnStep {
+  _SiwnStep(this.label);
+  final String label;
+  String? detail;
+  bool? ok; // null = running
+}
+
+class _SignInWithNearPageState extends State<SignInWithNearPage> {
+  final _accountCtrl = TextEditingController();
+  final _secretCtrl = TextEditingController();
+  final _apiCtrl = TextEditingController(
+    text: 'https://nearbuilders.org/api/auth',
+  );
+  final _recipientCtrl = TextEditingController(text: 'nearbuilders.org');
+
+  bool _busy = false;
+  String? _error;
+  final List<_SiwnStep> _steps = [];
+  Map<String, dynamic>? _session;
+  String? _token;
+
+  @override
+  void dispose() {
+    _accountCtrl.dispose();
+    _secretCtrl.dispose();
+    _apiCtrl.dispose();
+    _recipientCtrl.dispose();
+    super.dispose();
+  }
+
+  _SiwnStep _step(String label) {
+    final s = _SiwnStep(label);
+    setState(() => _steps.add(s));
+    return s;
+  }
+
+  void _finish(_SiwnStep s, bool ok, [String? detail]) {
+    setState(() {
+      s.ok = ok;
+      s.detail = detail;
+    });
+  }
+
+  Future<void> _createDemoAccount() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final kp = await KeyPairEd25519.generate();
+      final accountId =
+          'near-dart-siwn-${DateTime.now().millisecondsSinceEpoch}.testnet';
+      final res = await http.post(
+        Uri.parse('https://helper.testnet.near.org/account'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'newAccountId': accountId,
+          'newAccountPublicKey': kp.publicKey.value,
+        }),
+      );
+      if (res.statusCode != 200) {
+        setState(() {
+          _busy = false;
+          _error = 'Faucet failed (HTTP ${res.statusCode})';
+        });
+        return;
+      }
+      // Wait until the account's key is queryable so /near/nonce (which checks
+      // the account exists) won't race the faucet.
+      for (var i = 0; i < 15; i++) {
+        final check = await widget.appState.client.viewAccessKey(
+          accountId: AccountId(accountId),
+          publicKey: kp.publicKey,
+          blockReference: BlockReference.finality(Finality.final_),
+        );
+        if (check.isSuccess) break;
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+      }
+      setState(() {
+        _accountCtrl.text = accountId;
+        _secretCtrl.text = kp.toString();
+        _busy = false;
+      });
+    } catch (e) {
+      setState(() {
+        _busy = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Future<void> _signIn() async {
+    final accountId = _accountCtrl.text.trim();
+    final secret = _secretCtrl.text.trim();
+    final api = _apiCtrl.text.trim().replaceAll(RegExp(r'/$'), '');
+    final recipient = _recipientCtrl.text.trim();
+    if (accountId.isEmpty || secret.isEmpty) {
+      setState(
+        () => _error =
+            'Enter an account and its full-access key '
+            '(or create a demo account).',
+      );
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+      _steps.clear();
+      _session = null;
+      _token = null;
+    });
+
+    try {
+      final keyPair = await KeyPairEd25519.fromString(secret);
+
+      // 1. Challenge nonce from the API
+      var s = _step('POST /near/nonce');
+      final nonceRes = await http.post(
+        Uri.parse('$api/near/nonce'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'accountId': accountId, 'networkId': 'testnet'}),
+      );
+      if (nonceRes.statusCode != 200) {
+        _finish(s, false, 'HTTP ${nonceRes.statusCode}: ${nonceRes.body}');
+        setState(() => _busy = false);
+        return;
+      }
+      final nonceHex = (jsonDecode(nonceRes.body) as Map)['nonce'] as String;
+      _finish(s, true, 'nonce ${nonceHex.substring(0, 16)}…');
+      final nonce = <int>[
+        for (var i = 0; i < nonceHex.length; i += 2)
+          int.parse(nonceHex.substring(i, i + 2), radix: 16),
+      ];
+
+      // 2. Sign the NEP-413 payload locally
+      s = _step('Sign NEP-413 payload (local ed25519)');
+      final message = 'Sign in to $recipient';
+      final signed = await signNep413Message(
+        payload: Nep413Payload(
+          message: message,
+          recipient: recipient,
+          nonce: nonce,
+        ),
+        keyPair: keyPair,
+        accountId: AccountId(accountId),
+      );
+      _finish(s, true, 'sig ${signed.signature.substring(0, 16)}…');
+
+      // 3. Verify -> session
+      s = _step('POST /near/verify');
+      final verifyRes = await http.post(
+        Uri.parse('$api/near/verify'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'signedMessage': {
+            'accountId': accountId,
+            'publicKey': signed.publicKey.value,
+            'signature': signed.signature,
+          },
+          'message': message,
+          'recipient': recipient,
+          'nonce': nonceHex,
+          'accountId': accountId,
+        }),
+      );
+      if (verifyRes.statusCode != 200) {
+        _finish(s, false, 'HTTP ${verifyRes.statusCode}: ${verifyRes.body}');
+        setState(() => _busy = false);
+        return;
+      }
+      final verify = jsonDecode(verifyRes.body) as Map<String, dynamic>;
+      final token = verify['token'] as String?;
+      _finish(s, true, 'token ${token?.substring(0, 12)}…');
+
+      // 4. Use the session (cookie) for an authenticated call
+      s = _step('GET /get-session (authenticated)');
+      final cookie = verifyRes.headers['set-cookie'];
+      final sessRes = await http.get(
+        Uri.parse('$api/get-session'),
+        headers: {if (cookie != null) 'Cookie': cookie},
+      );
+      if (sessRes.statusCode == 200 && sessRes.body.contains(accountId)) {
+        _finish(s, true, 'session active');
+        setState(() {
+          _token = token;
+          _session = jsonDecode(sessRes.body) as Map<String, dynamic>;
+        });
+      } else {
+        _finish(s, false, 'HTTP ${sessRes.statusCode}');
+      }
+      setState(() => _busy = false);
+    } catch (e) {
+      setState(() {
+        _busy = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Widget _field(
+    TextEditingController ctrl,
+    String label,
+    String hint, {
+    bool mono = false,
+  }) => TextField(
+    controller: ctrl,
+    style: TextStyle(fontSize: 13, fontFamily: mono ? 'monospace' : null),
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: hint,
+      isDense: true,
+      border: const OutlineInputBorder(),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final user = _session?['user'] as Map<String, dynamic>?;
+    return _BasePage(
+      title: 'Sign in with NEAR',
+      appState: widget.appState,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            'NEP-413 session auth against a better-near-auth API '
+            '(login without a transaction).',
+            style: TextStyle(color: NearTheme.grey, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          _field(_accountCtrl, 'Account ID', 'alice.testnet'),
+          const SizedBox(height: 10),
+          _field(
+            _secretCtrl,
+            'Full-access secret key',
+            'ed25519:…',
+            mono: true,
+          ),
+          const SizedBox(height: 10),
+          _LoadButton(
+            label: 'Create demo account (faucet)',
+            isLoading: _busy && _steps.isEmpty,
+            onPressed: () {
+              if (!_busy) _createDemoAccount();
+            },
+          ),
+          const SizedBox(height: 18),
+          _field(
+            _apiCtrl,
+            'better-near-auth base URL',
+            'https://…/api/auth',
+            mono: true,
+          ),
+          const SizedBox(height: 10),
+          _field(_recipientCtrl, 'Recipient', 'yourapp.com'),
+          const SizedBox(height: 16),
+          GlassButton(
+            label: 'Sign in with NEAR',
+            icon: Icons.login,
+            loading: _busy && _steps.isNotEmpty,
+            onPressed: _busy ? null : _signIn,
+          ),
+          const SizedBox(height: 20),
+          if (_error != null) _ErrorCard(message: _error!),
+          if (_steps.isNotEmpty)
+            GlassPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final s in _steps)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            s.ok == null
+                                ? Icons.more_horiz
+                                : s.ok!
+                                ? Icons.check_circle
+                                : Icons.cancel,
+                            size: 15,
+                            color: s.ok == null
+                                ? NearTheme.grey
+                                : s.ok!
+                                ? Near.mint
+                                : Near.danger,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.label,
+                                  style: Near.mono(
+                                    12.5,
+                                    color: Near.textPrimary,
+                                  ),
+                                ),
+                                if (s.detail != null)
+                                  Text(
+                                    s.detail!,
+                                    style: Near.mono(
+                                      11,
+                                      color: s.ok == false
+                                          ? Near.danger
+                                          : NearTheme.grey,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          if (user != null) ...[
+            const SizedBox(height: 12),
+            _ResultCard(
+              title: 'Authenticated ✓',
+              data: {
+                'user_id': user['id'],
+                'name': user['name'],
+                'email': user['email'],
+                'token': _token,
+                'expires':
+                    (_session?['session']
+                        as Map<String, dynamic>?)?['expiresAt'],
+              },
+            ),
+          ],
+        ],
       ),
     );
   }
