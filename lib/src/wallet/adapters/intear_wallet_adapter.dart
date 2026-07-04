@@ -15,15 +15,18 @@ import '../wallet_adapter.dart' show WalletAccount;
 class IntearWalletConfig {
   const IntearWalletConfig({
     required this.networkId,
+    required this.origin,
     this.bridgeUrl = 'wss://logout-bridge-service.intear.tech',
     this.contractId,
     this.methodNames,
-    this.gasAllowanceYocto,
     this.responseTimeout = const Duration(minutes: 5),
   });
 
   /// `mainnet` or `testnet` (any string works for a custom localnet).
   final String networkId;
+
+  /// How this app is presented inside Intear Wallet (a URL or name).
+  final String origin;
 
   /// The Intear logout-bridge service that relays requests to the wallet app.
   final String bridgeUrl;
@@ -34,10 +37,6 @@ class IntearWalletConfig {
 
   /// Method names allowed for the function-call key (null = any).
   final List<String>? methodNames;
-
-  /// Gas allowance for the function-call key in yoctoNEAR (null = wallet
-  /// default).
-  final BigInt? gasAllowanceYocto;
 
   /// How long to wait for the user to approve in the wallet.
   final Duration responseTimeout;
@@ -76,6 +75,14 @@ class IntearConnectionResult {
 /// At [signIn] the adapter generates an ephemeral **app key**; the wallet
 /// binds it to the session and every subsequent request is authenticated by
 /// signing `sha256("{nonce}|{payload}")` with it.
+///
+/// **Android note:** the bridge session lives only as long as this app's
+/// WebSocket. Android restricts background network shortly after the wallet
+/// app comes to the foreground, so the user must approve before the OS cuts
+/// the socket (about a minute for battery-exempted apps, less otherwise).
+/// Long approvals — e.g. accepting the function-call-key grant, which sends
+/// an on-chain transaction — may exceed that window; the connect itself
+/// completes in seconds and is unaffected in practice.
 class IntearWalletAdapter {
   IntearWalletAdapter({
     required this.config,
@@ -102,7 +109,11 @@ class IntearWalletAdapter {
   }) async {
     final appKey = await KeyPairEd25519.generate();
 
+    // V2 connect message: `origin` is required by the wallet;
+    // `functionCallPublicKey` is used by newer wallets and ignored by older
+    // ones (which use the auth key as the function-call key).
     final messagePayload = <String, dynamic>{
+      'origin': config.origin,
       if (messageToSign != null)
         'messageToSign': _nep413Json(messageToSign, state),
       if (config.contractId != null)
@@ -117,11 +128,10 @@ class IntearWalletAdapter {
       'nonce': nonce,
       'message': message,
       'signature': await _signRequest(appKey, nonce, message),
-      'version': 'V3',
+      'version': 'V2',
+      'actualOrigin': config.origin,
       if (config.contractId != null) 'contractId': config.contractId!.value,
       if (config.methodNames != null) 'methodNames': config.methodNames,
-      if (config.gasAllowanceYocto != null)
-        'gasAllowance': {'Amount': config.gasAllowanceYocto.toString()},
     };
 
     final response = await _bridgeRequest(
@@ -131,7 +141,11 @@ class IntearWalletAdapter {
       successType: 'connected',
     );
 
-    final accountId = AccountId(response['accountId'] as String);
+    final accounts = (response['accounts'] ?? const []) as List<dynamic>;
+    if (accounts.isEmpty) {
+      throw StateError('Intear Wallet returned no accounts');
+    }
+    final accountId = AccountId((accounts.first as Map)['accountId'] as String);
     await keyStore.setKey(accountId, appKey);
 
     Nep413SignedMessage? signed;
@@ -240,12 +254,12 @@ class IntearWalletAdapter {
     return 'ed25519:${base58Encode(signature)}';
   }
 
-  /// NEP-413 payload as Intear's stringified JSON (snake_case callback_url).
+  /// NEP-413 payload as Intear's stringified JSON (nonce as a 32-int array).
   String _nep413Json(Nep413Payload payload, String? state) => jsonEncode({
     'message': payload.message,
     'nonce': payload.nonce,
     'recipient': payload.recipient,
-    'callback_url': payload.callbackUrl,
+    'callbackUrl': payload.callbackUrl,
     'state': state,
   });
 
@@ -272,7 +286,6 @@ class IntearWalletAdapter {
       if (sessionId == null) {
         throw StateError('Intear bridge did not return a session_id');
       }
-
       channel.sink.add(jsonEncode({'type': type, 'data': data}));
 
       final launched = await launchUrl(

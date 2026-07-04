@@ -133,6 +133,7 @@ class NearWalletController extends ChangeNotifier {
   IntearWalletAdapter _intearAdapter() => IntearWalletAdapter(
     config: IntearWalletConfig(
       networkId: _networkId,
+      origin: appOrigin ?? '$callbackScheme://app',
       contractId: contractId,
       methodNames: methodNames.isEmpty ? null : methodNames,
     ),

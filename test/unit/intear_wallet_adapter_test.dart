@@ -76,6 +76,7 @@ void main() {
 
   IntearWalletAdapter adapter({AccountId? contractId}) => IntearWalletAdapter(
     config: IntearWalletConfig(
+      origin: 'https://example.app',
       networkId: 'testnet',
       bridgeUrl: bridge.url,
       contractId: contractId,
@@ -99,7 +100,12 @@ void main() {
     test('connects, launches the deep link and persists the app key', () async {
       bridge.respond = (req) => {
         'type': 'connected',
-        'accountId': 'alice.testnet',
+        'accounts': [
+          {
+            'accountId': 'alice.testnet',
+            'publicKey': 'ed25519:11111111111111111111111111111111',
+          },
+        ],
         'functionCallKeyAdded': false,
         'useBridge': true,
         'walletUrl': 'https://wallet.intear.tech',
@@ -124,7 +130,12 @@ void main() {
       () async {
         bridge.respond = (req) => {
           'type': 'connected',
-          'accountId': 'alice.testnet',
+          'accounts': [
+            {
+              'accountId': 'alice.testnet',
+              'publicKey': 'ed25519:11111111111111111111111111111111',
+            },
+          ],
           'useBridge': true,
         };
 
@@ -133,7 +144,10 @@ void main() {
         final req = bridge.lastRequest!;
         expect(req['type'], 'signIn');
         final data = req['data'] as Map<String, dynamic>;
-        expect(data['version'], 'V3');
+        expect(data['version'], 'V2');
+        expect(data['actualOrigin'], 'https://example.app');
+        final msg = jsonDecode(data['message'] as String) as Map;
+        expect(msg['origin'], 'https://example.app');
         expect(data['networkId'], 'testnet');
         expect(data['contractId'], 'app.testnet');
         // message carries the function-call public key
@@ -167,7 +181,12 @@ void main() {
       // Establish a session first.
       bridge.respond = (_) => {
         'type': 'connected',
-        'accountId': 'alice.testnet',
+        'accounts': [
+          {
+            'accountId': 'alice.testnet',
+            'publicKey': 'ed25519:11111111111111111111111111111111',
+          },
+        ],
         'useBridge': true,
       };
       await adapter().signIn();
@@ -231,7 +250,12 @@ void main() {
     setUp(() async {
       bridge.respond = (_) => {
         'type': 'connected',
-        'accountId': 'alice.testnet',
+        'accounts': [
+          {
+            'accountId': 'alice.testnet',
+            'publicKey': 'ed25519:11111111111111111111111111111111',
+          },
+        ],
         'useBridge': true,
       };
       await adapter().signIn();
