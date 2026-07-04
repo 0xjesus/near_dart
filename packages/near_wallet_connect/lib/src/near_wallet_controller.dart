@@ -254,12 +254,24 @@ class NearWalletController extends ChangeNotifier {
   }
 
   Future<void> _handleCallback(Uri uri) async {
+    // Only a pending sign-in makes this callback ours. Other wallet
+    // callbacks can carry the same parameters (e.g. MyNearWallet's /sign
+    // appends account_id next to transactionHashes) and must not clobber
+    // an existing session.
+    final signInPending = await keyStore.getPendingKey() != null;
+    if (!signInPending && _account != null) return;
+
     _set(busy: true);
     try {
       final account = await _mnwAdapter().completeSignIn(uri);
-      _account = account;
-      _walletOption = NearWalletOption.myNearWallet;
-      _set(busy: false, error: account == null ? 'Sign-in cancelled' : null);
+      if (account != null) {
+        _account = account;
+        _walletOption = NearWalletOption.myNearWallet;
+        await _saveOption(NearWalletOption.myNearWallet);
+        _set(busy: false);
+      } else {
+        _set(busy: false, error: signInPending ? 'Sign-in cancelled' : null);
+      }
     } catch (e) {
       _set(busy: false, error: '$e');
     }
