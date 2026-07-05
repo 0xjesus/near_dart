@@ -1,15 +1,13 @@
 import 'package:near_dart/near_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// A persistent [KeyStore] backed by `shared_preferences`.
+/// A persistent [KeyStore] backed by `shared_preferences` — **plain,
+/// unencrypted storage**.
 ///
-/// Survives the MyNearWallet sign-in redirect (the page reload on web, the
-/// app switch on mobile) and app restarts — which the core `InMemoryKeyStore`
-/// does not.
-///
-/// NOTE: `shared_preferences` is plain (unencrypted) storage; it works on
-/// every platform including web. For higher security on mobile, supply your
-/// own [KeyStore] backed by encrypted storage — the interface is identical.
+/// Use this for demos, tests and web (where no OS secret storage exists;
+/// it is the web default of `NearWalletController`). For production mobile
+/// and desktop apps use [SecureKeyStore] — the non-web default — which is
+/// backed by Keystore/Keychain/DPAPI/libsecret.
 class SharedPrefsKeyStore implements KeyStore {
   /// Creates a store; [namespace] prefixes all keys so multiple apps/networks
   /// can coexist.

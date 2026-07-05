@@ -1,3 +1,31 @@
+## 0.4.0
+
+Security release addressing an external audit (2026-07-05). Thanks to
+frolvlad for the review.
+
+**Breaking**
+- `AccountId` enforces the full nearcore account grammar (min length 2, no
+  leading/trailing/consecutive separators). Previously-accepted invalid
+  IDs now throw `ArgumentError`.
+- `PublicKey` requires valid base58 data of the exact key length (ed25519:
+  32 bytes, secp256k1: 64). Placeholder keys now throw.
+- `MyNearWalletAdapter.handleSignMessageCallback` throws `FormatException`
+  when `accountId`/`publicKey`/`signature` are missing instead of filling
+  placeholders.
+
+**Security**
+- `completeSignIn` only accepts callbacks landing on the configured
+  success/failure URLs and requires the returned `public_key` to match the
+  pending key — crafted deep links can no longer spoof a session.
+- New `completeSignMessage()` verifies the callback `state` and the
+  ed25519 signature over the exact NEP-413 payload requested (including
+  the redirect `callbackUrl`); throws `SignatureVerificationException`.
+- New `verifyNep413Signature()` helper (also useful server-side).
+
+**Other**
+- Explicit `platforms:` declarations; README install snippets current;
+  platform/feature support matrix; `docs/security.md` threat model.
+
 ## 0.3.1
 
 - Fix: `MyNearWalletAdapter.handleSignMessageCallback` now parses the

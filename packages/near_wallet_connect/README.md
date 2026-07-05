@@ -15,7 +15,7 @@ one controller gives you the same API whatever the user picked. Built on
 
 ```yaml
 dependencies:
-  near_wallet_connect: ^0.2.1
+  near_wallet_connect: ^0.3.0
 ```
 
 ## Use it (this is the whole integration)
@@ -136,8 +136,11 @@ no callback setup on any platform (responses arrive over their bridges).
   function-call key, so `signer()` works here too.
 - **HOT**: requests are queued on HOT's relay and opened via `hotwallet://`;
   the app polls the relay for the response.
-- Keys persist via `SharedPrefsKeyStore` (swap in your own encrypted
-  `KeyStore` for production mobile).
+- Keys persist via **`SecureKeyStore`** by default (Android Keystore /
+  Apple Keychain / Windows DPAPI / Linux libsecret); on web — where no OS
+  secret storage exists — a plain `SharedPrefsKeyStore` is used. Sessions
+  from older versions migrate to secure storage automatically. Details:
+  [docs/security.md](https://github.com/0xjesus/near_dart/blob/main/docs/security.md).
 
 ## License
 

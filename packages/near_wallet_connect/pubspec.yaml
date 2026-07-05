@@ -2,7 +2,7 @@ name: near_wallet_connect
 description: >-
   Drop-in NEAR wallet connection for Flutter — adaptive connect (web redirect,
   mobile deep links), persistent key storage, and a NearConnectButton widget.
-version: 0.2.1
+version: 0.3.0
 homepage: https://0xj.dev
 repository: https://github.com/0xjesus/near_dart
 topics:
@@ -27,7 +27,8 @@ platforms:
 dependencies:
   flutter:
     sdk: flutter
-  near_dart: ^0.3.0
+  near_dart: ^0.4.0
+  flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.3.2
   app_links: ^6.3.2
   url_launcher: ^6.2.5

@@ -6,6 +6,7 @@ import 'package:near_dart/near_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'secure_key_store.dart';
 import 'shared_prefs_key_store.dart';
 import 'wallet_option.dart';
 
@@ -45,7 +46,8 @@ class NearWalletController extends ChangeNotifier {
     this.appOrigin,
     KeyStore? keyStore,
     NearRpcClient? client,
-  }) : keyStore = keyStore ?? SharedPrefsKeyStore(),
+  }) : keyStore =
+           keyStore ?? (kIsWeb ? SharedPrefsKeyStore() : SecureKeyStore()),
        client =
            client ??
            (network == MyNearWalletNetwork.mainnet
@@ -69,6 +71,10 @@ class NearWalletController extends ChangeNotifier {
   final String? appOrigin;
 
   /// Where keys are persisted (must survive the redirect).
+  ///
+  /// Defaults to [SecureKeyStore] (Keystore/Keychain/DPAPI/libsecret) on
+  /// mobile and desktop, and [SharedPrefsKeyStore] on web, where no OS
+  /// secret storage exists.
   final KeyStore keyStore;
 
   /// RPC client used for local signing after connect.
@@ -153,6 +159,11 @@ class NearWalletController extends ChangeNotifier {
   /// Call once at startup. On web it reads `Uri.base`; on mobile it consumes
   /// the initial deep link and listens for subsequent ones.
   Future<void> init() async {
+    // near_wallet_connect < 0.3.0 kept keys in plain shared preferences;
+    // move any existing session into secure storage once.
+    final ks = keyStore;
+    if (ks is SecureKeyStore) await ks.migrateFrom(SharedPrefsKeyStore());
+
     await _restore();
     if (kIsWeb) {
       if (_looksLikeCallback(Uri.base)) await _handleCallback(Uri.base);

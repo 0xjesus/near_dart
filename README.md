@@ -24,11 +24,26 @@ A type-safe, platform-agnostic SDK for building NEAR Protocol applications with 
 - **NEP-413 Support**: Message signing for authentication
 - **Tested against the real chain**: every release runs a real sign-and-send E2E on testnet
 
+## Platform support
+
+| Feature | Android | iOS | Web | macOS | Windows | Linux |
+|---|---|---|---|---|---|---|
+| RPC queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Local signing (Borsh + ed25519) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| NEP-413 sign / verify | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| MyNearWallet redirect | ✅ | ✅ | ✅ | ⚠️ untested | ⚠️ untested | ⚠️ untested |
+| Intear Wallet (bridge + deep link) | ✅ | ✅ | ⚠️ needs the native app | ⚠️ untested | ⚠️ untested | ⚠️ untested |
+| HOT Wallet (relay) | ✅ mainnet only | ✅ mainnet only | ✅ mainnet only | ⚠️ untested | ⚠️ untested | ⚠️ untested |
+| Secure key storage | ✅ Keystore | ✅ Keychain | ⚠️ plain storage (no OS secrets on web) | ✅ Keychain | ✅ DPAPI | ✅ libsecret |
+
+Rows marked *untested* should work (pure Dart + url_launcher) but have no
+verified end-to-end run yet. Security details: [docs/security.md](docs/security.md).
+
 ## Installation
 
 ```yaml
 dependencies:
-  near_dart: ^0.3.1
+  near_dart: ^0.4.0
 ```
 
 ## Quick Start

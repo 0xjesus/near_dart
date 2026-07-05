@@ -1,3 +1,20 @@
+## 0.3.0
+
+Security release addressing an external audit (2026-07-05).
+
+**Breaking / behavior change**
+- **Secure key storage by default**: on Android/iOS/macOS/Windows/Linux the
+  controller now stores keys in `SecureKeyStore` (flutter_secure_storage:
+  Keystore / Keychain / DPAPI / libsecret). Existing sessions in plain
+  shared preferences are migrated automatically on first `init()`.
+- `SharedPrefsKeyStore` remains the default only on web and is documented
+  as plain-storage (demo/web) — pass it explicitly if you really want it.
+
+**Other**
+- New dependency: `flutter_secure_storage`.
+- Explicit `platforms:` declarations; README updated with the secure
+  storage model. Requires `near_dart ^0.4.0`.
+
 ## 0.2.1
 
 - Fix: a wallet callback that is not a pending sign-in (e.g. MyNearWallet's
