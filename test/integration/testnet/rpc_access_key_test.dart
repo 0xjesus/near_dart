@@ -146,7 +146,9 @@ void main() {
     });
 
     test('returns error for non-existent key', () async {
-      final fakeKey = PublicKey('ed25519:FakeKey123456789abcdefghijklmnop');
+      final fakeKey = PublicKey(
+        'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+      );
 
       final result = await client.viewAccessKey(
         accountId: TestnetAccounts.testnet,
@@ -158,7 +160,9 @@ void main() {
     });
 
     test('returns error for non-existent account', () async {
-      final fakeKey = PublicKey('ed25519:FakeKey123456789abcdefghijklmnop');
+      final fakeKey = PublicKey(
+        'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+      );
 
       final result = await client.viewAccessKey(
         accountId: NonExistentAccounts.testnetNonExistent,

@@ -112,7 +112,9 @@ void main() {
 
   group('Testnet: RPC Error - Access Key Errors', () {
     test('viewAccessKey returns error for non-existent key', () async {
-      final fakeKey = PublicKey('ed25519:FakeKeyThatDoesNotExist123456789ab');
+      final fakeKey = PublicKey(
+        'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+      );
 
       final result = await client.viewAccessKey(
         accountId: TestnetAccounts.testnet,
@@ -124,7 +126,9 @@ void main() {
     });
 
     test('viewAccessKey returns error for non-existent account', () async {
-      final fakeKey = PublicKey('ed25519:FakeKeyThatDoesNotExist123456789ab');
+      final fakeKey = PublicKey(
+        'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+      );
 
       final result = await client.viewAccessKey(
         accountId: NonExistentAccounts.testnetNonExistent,
