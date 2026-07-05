@@ -15,7 +15,7 @@ one controller gives you the same API whatever the user picked. Built on
 
 ```yaml
 dependencies:
-  near_wallet_connect: ^0.2.0
+  near_wallet_connect: ^0.2.1
 ```
 
 ## Use it (this is the whole integration)

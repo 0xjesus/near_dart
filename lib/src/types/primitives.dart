@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:equatable/equatable.dart';
 import 'package:meta/meta.dart';
+
+import '../encoding/base58.dart';
 
 /// Represents a NEAR Protocol cryptographic hash (32 bytes, base58 encoded).
 ///
@@ -48,16 +52,22 @@ class AccountId extends Equatable {
   /// The account identifier string.
   final String value;
 
+  /// nearcore's account grammar: dot-separated parts, where each part is
+  /// alphanumeric runs optionally joined by single `-`/`_`. This rejects
+  /// leading/trailing separators and consecutive separators (`..`, `--`,
+  /// `a-.b`, …) — the full protocol rules, not just the character set.
+  static final _accountPattern = RegExp(
+    r'^(([a-z\d]+[\-_])*[a-z\d]+\.)*([a-z\d]+[\-_])*[a-z\d]+$',
+  );
+
   static void _validate(String value) {
-    if (value.isEmpty) {
-      throw ArgumentError.value(value, 'value', 'Account ID cannot be empty');
+    if (value.length < 2) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Account ID must be at least 2 characters',
+      );
     }
-
-    // Implicit accounts are 64 hex characters
-    if (value.length == 64 && _isHex(value)) {
-      return; // Valid implicit account
-    }
-
     if (value.length > 64) {
       throw ArgumentError.value(
         value,
@@ -65,20 +75,15 @@ class AccountId extends Equatable {
         'Account ID cannot exceed 64 characters',
       );
     }
-
-    // Basic character validation for named accounts
-    final validPattern = RegExp(r'^[a-z0-9._-]+$');
-    if (!validPattern.hasMatch(value)) {
+    if (!_accountPattern.hasMatch(value)) {
       throw ArgumentError.value(
         value,
         'value',
-        'Account ID contains invalid characters',
+        'Account ID is invalid: allowed are lowercase alphanumeric parts '
+            'joined by single ".", "-" or "_" separators (no leading, '
+            'trailing or consecutive separators)',
       );
     }
-  }
-
-  static bool _isHex(String value) {
-    return RegExp(r'^[0-9a-f]+$').hasMatch(value);
   }
 
   /// Converts this account ID to a JSON string.
@@ -257,17 +262,42 @@ class PublicKey extends Equatable {
   final KeyType keyType;
 
   static KeyType _parseKeyType(String value) {
+    final KeyType type;
+    final int expectedLength;
     if (value.startsWith('ed25519:')) {
-      return KeyType.ed25519;
+      type = KeyType.ed25519;
+      expectedLength = 32;
+    } else if (value.startsWith('secp256k1:')) {
+      type = KeyType.secp256k1;
+      expectedLength = 64;
+    } else {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Public key must start with "ed25519:" or "secp256k1:"',
+      );
     }
-    if (value.startsWith('secp256k1:')) {
-      return KeyType.secp256k1;
+
+    final data = value.substring(value.indexOf(':') + 1);
+    final Uint8List bytes;
+    try {
+      bytes = base58Decode(data);
+    } on FormatException catch (e) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Public key data is not valid base58: ${e.message}',
+      );
     }
-    throw ArgumentError.value(
-      value,
-      'value',
-      'Public key must start with "ed25519:" or "secp256k1:"',
-    );
+    if (bytes.length != expectedLength) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Decoded ${type.name} public key must be $expectedLength bytes, '
+            'got ${bytes.length}',
+      );
+    }
+    return type;
   }
 
   /// Returns the key data without the type prefix.

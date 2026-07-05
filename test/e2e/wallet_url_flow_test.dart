@@ -284,12 +284,15 @@ void main() {
 
       // Simulate callback
       final callbackUri = Uri.parse(
-        'https://myapp.com/auth/callback?accountId=alice.near&publicKey=ed25519:abc&signature=sig123&state=csrf-token-12345',
+        'https://myapp.com/auth/callback?accountId=alice.near&publicKey=ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp&signature=sig123&state=csrf-token-12345',
       );
       final signedMessage = adapter.handleSignMessageCallback(callbackUri);
 
       expect(signedMessage.accountId.value, equals('alice.near'));
-      expect(signedMessage.publicKey.value, equals('ed25519:abc'));
+      expect(
+        signedMessage.publicKey.value,
+        equals('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+      );
       expect(signedMessage.signature, equals('sig123'));
       expect(signedMessage.state, equals('csrf-token-12345'));
     });

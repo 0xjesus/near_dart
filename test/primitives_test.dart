@@ -59,7 +59,7 @@ void main() {
 
     test('validates basic account id format', () {
       // Valid accounts
-      expect(() => AccountId('a'), returnsNormally);
+      expect(() => AccountId('ab'), returnsNormally);
       expect(() => AccountId('alice'), returnsNormally);
       expect(() => AccountId('alice.near'), returnsNormally);
       expect(() => AccountId('a-b_c.near'), returnsNormally);
@@ -132,7 +132,7 @@ void main() {
 
     test('creates secp256k1 public key', () {
       const keyStr =
-          'secp256k1:5ftgm7wYK5gtVqq1kxMGy7gSudkrfYCbpsjL6sH1nwx2oj5NtSXqg6EYgAAeL';
+          'secp256k1:2Ana1pUpv2ZbMVkwF5FXapYeBEjdxDatLn7nvJkhgTSXbs59SyZSx866bXirPgj8QQVB57uxHJBG1YFvkRbFj4T';
       final key = PublicKey(keyStr);
 
       expect(key.keyType, equals(KeyType.secp256k1));

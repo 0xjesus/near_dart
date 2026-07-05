@@ -22,37 +22,53 @@ void main() {
     test('creates with required fields', () {
       final account = WalletAccount(
         accountId: AccountId('alice.near'),
-        publicKey: PublicKey('ed25519:abc123'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
 
       expect(account.accountId.value, equals('alice.near'));
-      expect(account.publicKey.value, equals('ed25519:abc123'));
+      expect(
+        account.publicKey.value,
+        equals('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+      );
     });
 
     test('toJson serializes correctly', () {
       final account = WalletAccount(
         accountId: AccountId('bob.testnet'),
-        publicKey: PublicKey('ed25519:xyz789'),
+        publicKey: PublicKey(
+          'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+        ),
       );
 
       final json = account.toJson();
 
       expect(json['accountId'], equals('bob.testnet'));
-      expect(json['publicKey'], equals('ed25519:xyz789'));
+      expect(
+        json['publicKey'],
+        equals('ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw'),
+      );
     });
 
     test('equality works correctly', () {
       final a1 = WalletAccount(
         accountId: AccountId('test.near'),
-        publicKey: PublicKey('ed25519:key1'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
       final a2 = WalletAccount(
         accountId: AccountId('test.near'),
-        publicKey: PublicKey('ed25519:key1'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
       final a3 = WalletAccount(
         accountId: AccountId('other.near'),
-        publicKey: PublicKey('ed25519:key1'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
 
       expect(a1, equals(a2));
@@ -62,11 +78,15 @@ void main() {
     test('hashCode is consistent with equality', () {
       final a1 = WalletAccount(
         accountId: AccountId('test.near'),
-        publicKey: PublicKey('ed25519:key1'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
       final a2 = WalletAccount(
         accountId: AccountId('test.near'),
-        publicKey: PublicKey('ed25519:key1'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
       );
 
       expect(a1.hashCode, equals(a2.hashCode));
@@ -166,13 +186,18 @@ void main() {
     test('creates with all fields', () {
       final message = SignedMessage(
         accountId: AccountId('signer.near'),
-        publicKey: PublicKey('ed25519:signerKey'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'base64signature==',
         state: 'returnedState',
       );
 
       expect(message.accountId.value, equals('signer.near'));
-      expect(message.publicKey.value, equals('ed25519:signerKey'));
+      expect(
+        message.publicKey.value,
+        equals('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+      );
       expect(message.signature, equals('base64signature=='));
       expect(message.state, equals('returnedState'));
     });
@@ -180,7 +205,9 @@ void main() {
     test('creates without optional state', () {
       final message = SignedMessage(
         accountId: AccountId('signer.near'),
-        publicKey: PublicKey('ed25519:signerKey'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'sig',
       );
 
@@ -190,7 +217,9 @@ void main() {
     test('toJson includes all fields', () {
       final message = SignedMessage(
         accountId: AccountId('alice.near'),
-        publicKey: PublicKey('ed25519:pk'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'sig123',
         state: 'mystate',
       );
@@ -198,7 +227,10 @@ void main() {
       final json = message.toJson();
 
       expect(json['accountId'], equals('alice.near'));
-      expect(json['publicKey'], equals('ed25519:pk'));
+      expect(
+        json['publicKey'],
+        equals('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+      );
       expect(json['signature'], equals('sig123'));
       expect(json['state'], equals('mystate'));
     });
@@ -206,7 +238,9 @@ void main() {
     test('toJson excludes null state', () {
       final message = SignedMessage(
         accountId: AccountId('alice.near'),
-        publicKey: PublicKey('ed25519:pk'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'sig123',
       );
 
@@ -218,19 +252,25 @@ void main() {
     test('equality works correctly', () {
       final m1 = SignedMessage(
         accountId: AccountId('test.near'),
-        publicKey: PublicKey('ed25519:key'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'sig',
         state: 'state',
       );
       final m2 = SignedMessage(
         accountId: AccountId('test.near'),
-        publicKey: PublicKey('ed25519:key'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'sig',
         state: 'state',
       );
       final m3 = SignedMessage(
         accountId: AccountId('test.near'),
-        publicKey: PublicKey('ed25519:key'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'different',
         state: 'state',
       );

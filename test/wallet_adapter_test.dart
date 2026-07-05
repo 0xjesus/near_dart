@@ -220,13 +220,17 @@ void main() {
     test('equality works correctly', () {
       final msg1 = SignedMessage(
         accountId: AccountId('alice.near'),
-        publicKey: PublicKey('ed25519:key'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'sig',
         state: 'state',
       );
       final msg2 = SignedMessage(
         accountId: AccountId('alice.near'),
-        publicKey: PublicKey('ed25519:key'),
+        publicKey: PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        ),
         signature: 'sig',
         state: 'state',
       );

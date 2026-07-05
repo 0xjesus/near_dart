@@ -83,6 +83,7 @@ void main() {
       final signed = adapter.handleSignMessageCallback(
         Uri.parse(
           'myapp://wallet/success?accountId=old.testnet&state=s1'
+          '&publicKey=ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'
           '#accountId=new.testnet&signature=sig',
         ),
       );

@@ -9,10 +9,12 @@ import 'package:near_dart/near_dart.dart';
 void main() {
   group('AccountId Edge Cases', () {
     group('Valid account IDs', () {
-      test('minimum length account (1 char)', () {
-        expect(() => AccountId('a'), returnsNormally);
-        expect(() => AccountId('z'), returnsNormally);
-        expect(() => AccountId('0'), returnsNormally);
+      test('rejects 1-char account (protocol minimum is 2)', () {
+        expect(() => AccountId('a'), throwsArgumentError);
+        expect(() => AccountId('z'), throwsArgumentError);
+        expect(() => AccountId('0'), throwsArgumentError);
+        expect(() => AccountId('ab'), returnsNormally);
+        expect(() => AccountId('a0'), returnsNormally);
       });
 
       test('maximum length named account (64 chars)', () {
@@ -239,7 +241,7 @@ void main() {
 
       test('secp256k1 key', () {
         const keyStr =
-            'secp256k1:5ftgm7wYK5gtVqq1kxMGy7gSudkrfYCbpsjL6sH1nwx2oj5NtSXqg6EYgAAeL';
+            'secp256k1:2Ana1pUpv2ZbMVkwF5FXapYeBEjdxDatLn7nvJkhgTSXbs59SyZSx866bXirPgj8QQVB57uxHJBG1YFvkRbFj4T';
         final key = PublicKey(keyStr);
 
         expect(key.keyType, equals(KeyType.secp256k1));
@@ -264,10 +266,20 @@ void main() {
       });
 
       test('only prefix throws', () {
-        // This actually works since it matches the pattern
-        // The validation only checks for prefix, not data validity
-        final key = PublicKey('ed25519:');
-        expect(key.keyData, equals(''));
+        expect(() => PublicKey('ed25519:'), throwsArgumentError);
+      });
+
+      test('wrong byte length throws', () {
+        // valid base58, but not 32 bytes
+        expect(() => PublicKey('ed25519:abc'), throwsArgumentError);
+      });
+
+      test('invalid base58 throws', () {
+        // 0, O, I, l are not base58 characters
+        expect(
+          () => PublicKey('ed25519:0OIl0OIl0OIl0OIl0OIl0OIl0OIl0OIl'),
+          throwsArgumentError,
+        );
       });
     });
 
@@ -294,14 +306,22 @@ void main() {
       });
 
       test('different keys not equal', () {
-        final k1 = PublicKey('ed25519:abc');
-        final k2 = PublicKey('ed25519:xyz');
+        final k1 = PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        );
+        final k2 = PublicKey(
+          'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+        );
         expect(k1, isNot(equals(k2)));
       });
 
       test('different types not equal', () {
-        final k1 = PublicKey('ed25519:abc');
-        final k2 = PublicKey('secp256k1:abc');
+        final k1 = PublicKey(
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        );
+        final k2 = PublicKey(
+          'secp256k1:2Ana1pUpv2ZbMVkwF5FXapYeBEjdxDatLn7nvJkhgTSXbs59SyZSx866bXirPgj8QQVB57uxHJBG1YFvkRbFj4T',
+        );
         expect(k1, isNot(equals(k2)));
       });
     });

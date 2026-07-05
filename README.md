@@ -28,7 +28,7 @@ A type-safe, platform-agnostic SDK for building NEAR Protocol applications with 
 
 ```yaml
 dependencies:
-  near_dart: ^0.2.0
+  near_dart: ^0.3.1
 ```
 
 ## Quick Start

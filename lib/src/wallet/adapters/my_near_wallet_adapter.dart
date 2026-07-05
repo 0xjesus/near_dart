@@ -158,6 +158,10 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// Call this on app start (web: the initial URL) or when a deep link
   /// arrives (mobile).
   Future<WalletAccount?> completeSignIn(Uri callbackUri) async {
+    // Only URIs landing on the configured redirect URLs may complete a
+    // sign-in — an arbitrary deep link with an account_id must not.
+    if (!_matchesConfiguredCallback(callbackUri)) return null;
+
     final callback = MyNearWalletCallback.fromUri(callbackUri);
     if (!callback.isSuccess || callback.accountId == null) {
       await keyStore.clearPendingKey();
@@ -167,10 +171,11 @@ class MyNearWalletAdapter implements WalletAdapter {
     final pending = await keyStore.getPendingKey();
     if (pending == null) return null;
 
-    // The wallet returns the public key it provisioned; it must match the
-    // pending key we generated, otherwise we'd hold an unusable secret.
+    // The wallet must return the public key it provisioned, and it must be
+    // the pending key we generated — otherwise the callback is not a
+    // response to our request (or we'd hold an unusable secret).
     final returnedKey = callback.publicKey;
-    if (returnedKey != null && returnedKey != pending.publicKey.value) {
+    if (returnedKey == null || returnedKey != pending.publicKey.value) {
       await keyStore.clearPendingKey();
       return null;
     }
@@ -193,6 +198,21 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// raw callback (e.g. transaction-result callbacks).
   MyNearWalletCallback handleCallback(Uri callbackUri) =>
       MyNearWalletCallback.fromUri(callbackUri);
+
+  /// Whether [uri] lands on the configured success or failure URL
+  /// (scheme, host, port and path — query and fragment are the payload).
+  bool _matchesConfiguredCallback(Uri uri) {
+    bool matches(String configured) {
+      final c = Uri.parse(configured);
+      String norm(String p) => p.isEmpty ? '/' : p;
+      return uri.scheme == c.scheme &&
+          uri.host == c.host &&
+          uri.port == c.port &&
+          norm(uri.path) == norm(c.path);
+    }
+
+    return matches(config.successUrl) || matches(config.failureUrl);
+  }
 
   @override
   Future<void> signOut() async {
@@ -354,6 +374,11 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// The wallet returns `accountId`/`publicKey`/`signature` in the URL
   /// **hash fragment** (`callback#accountId=…`); older flows used query
   /// parameters. Both are accepted, with fragment values winning.
+  ///
+  /// All three fields are required — a callback missing any of them throws
+  /// [FormatException] rather than producing a partially-filled result.
+  /// This parses without verifying; to also check the signature
+  /// cryptographically use [completeSignMessage].
   SignedMessage handleSignMessageCallback(Uri callbackUri) {
     final params = {
       ...callbackUri.queryParameters,
@@ -361,14 +386,74 @@ class MyNearWalletAdapter implements WalletAdapter {
         ...Uri.splitQueryString(callbackUri.fragment),
     };
 
+    final accountId = params['accountId'] ?? _account?.accountId.value;
+    final publicKey = params['publicKey'];
+    final signature = params['signature'];
+    if (accountId == null || publicKey == null || signature == null) {
+      throw FormatException(
+        'Sign-message callback is missing '
+        '${[if (accountId == null) 'accountId', if (publicKey == null) 'publicKey', if (signature == null) 'signature'].join(', ')}',
+        callbackUri.toString(),
+      );
+    }
+
     return SignedMessage(
-      accountId: AccountId(
-        params['accountId'] ?? _account?.accountId.value ?? '',
-      ),
-      publicKey: PublicKey(params['publicKey'] ?? 'ed25519:placeholder'),
-      signature: params['signature'] ?? '',
+      accountId: AccountId(accountId),
+      publicKey: PublicKey(publicKey),
+      signature: signature,
       state: params['state'],
     );
+  }
+
+  /// Parses **and verifies** a sign-message callback against the original
+  /// [request].
+  ///
+  /// On top of [handleSignMessageCallback] this:
+  /// - rejects a callback whose `state` differs from `request.state`
+  ///   (CSRF/mix-up protection), and
+  /// - cryptographically verifies the ed25519 signature over the NEP-413
+  ///   payload the app actually requested — including the callbackUrl that
+  ///   MyNearWallet embeds in the signed bytes on redirect flows.
+  ///
+  /// Throws [FormatException] on missing fields or state mismatch and
+  /// [SignatureVerificationException] if the signature does not verify.
+  /// Note: whether the returned key belongs to the account should still be
+  /// checked on-chain (`view_access_key`) before trusting it for auth.
+  Future<SignedMessage> completeSignMessage(
+    Uri callbackUri, {
+    required SignMessageParams request,
+  }) async {
+    final signed = handleSignMessageCallback(callbackUri);
+
+    if (request.state != null && signed.state != request.state) {
+      throw FormatException(
+        'Sign-message callback state mismatch: '
+        'expected "${request.state}", got "${signed.state}"',
+        callbackUri.toString(),
+      );
+    }
+
+    final payload = Nep413Payload(
+      message: request.message,
+      recipient: request.recipient,
+      nonce: request.nonce,
+      callbackUrl: request.callbackUrl ?? config.successUrl,
+    );
+    final valid = await verifyNep413Signature(
+      payload: payload,
+      signed: Nep413SignedMessage(
+        accountId: signed.accountId,
+        publicKey: signed.publicKey,
+        signature: signed.signature,
+      ),
+    );
+    if (!valid) {
+      throw SignatureVerificationException(
+        'Sign-message callback signature does not verify for '
+        '${signed.accountId.value} (${signed.publicKey.value})',
+      );
+    }
+    return signed;
   }
 
   @override
@@ -454,4 +539,13 @@ class MyNearWalletCallback {
 
   /// Whether this callback indicates an error.
   bool get isError => errorCode != null || errorMessage != null;
+}
+
+/// A wallet callback carried a signature that does not verify.
+class SignatureVerificationException implements Exception {
+  SignatureVerificationException(this.message);
+  final String message;
+
+  @override
+  String toString() => 'SignatureVerificationException: $message';
 }

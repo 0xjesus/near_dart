@@ -106,3 +106,22 @@ Uint8List generateNep413Nonce({DateTime? now}) {
   }
   return nonce;
 }
+
+/// Verifies a NEP-413 [signed] message against the exact [payload] the app
+/// requested (message, nonce, recipient and — for redirect wallets — the
+/// callbackUrl, which is part of the signed bytes).
+///
+/// Returns true only if [signed.signature] is a valid ed25519 signature by
+/// [signed.publicKey] over `sha256(borsh(payload))`. Note this proves the
+/// signature is authentic for that key — whether the key belongs to
+/// [signed.accountId] must be checked on-chain (e.g. `view_access_key`).
+Future<bool> verifyNep413Signature({
+  required Nep413Payload payload,
+  required Nep413SignedMessage signed,
+}) {
+  return verifySignature(
+    message: payload.hash(),
+    signature: base64Decode(signed.signature),
+    publicKey: signed.publicKey,
+  );
+}
