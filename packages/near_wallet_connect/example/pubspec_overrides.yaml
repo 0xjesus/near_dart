@@ -1,6 +1,0 @@
-# Local development against the in-repo packages (ignored by `pub publish`).
-dependency_overrides:
-  near_dart:
-    path: ../../..
-  near_wallet_connect:
-    path: ..
