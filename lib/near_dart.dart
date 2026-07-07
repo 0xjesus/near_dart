@@ -48,6 +48,7 @@ export 'src/types/primitives.dart';
 export 'src/types/block_reference.dart';
 export 'src/types/json_rpc.dart';
 export 'src/types/rpc_result.dart';
+export 'src/types/network.dart';
 
 // Encoding
 export 'src/encoding/base58.dart';
@@ -87,3 +88,20 @@ export 'src/wallet/adapters/wallet_connect_adapter.dart';
 export 'src/wallet/adapters/my_near_wallet_adapter.dart';
 export 'src/wallet/adapters/intear_wallet_adapter.dart';
 export 'src/wallet/adapters/hot_wallet_adapter.dart';
+
+// NEAR Intents
+export 'src/intents/one_click_auth.dart';
+export 'src/intents/one_click_assets.dart';
+export 'src/intents/one_click_client.dart';
+export 'src/intents/one_click_explorer_client.dart';
+export 'src/intents/one_click_models.dart';
+export 'src/intents/one_click_quote_builder.dart';
+export 'src/intents/one_click_swap_controller.dart';
+export 'src/intents/intent_signing.dart';
+export 'src/intents/solver_relay_client.dart';
+export 'src/intents/solver_relay_models.dart';
+
+// NEP helpers
+export 'src/nep/nep141.dart';
+export 'src/nep/nep145.dart';
+export 'src/nep/nep171.dart';

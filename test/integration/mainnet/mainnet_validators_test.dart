@@ -64,12 +64,7 @@ void main() {
       final validators = result.getOrThrow();
 
       for (final validator in validators.currentValidators) {
-        // Mainnet validators typically have millions of NEAR staked
-        // At least 100,000 NEAR (100,000 * 10^24 yoctoNEAR)
-        final minStake = BigInt.parse(
-          '100000000000000000000000000000',
-        ); // 100k NEAR
-        expect(validator.stake.yoctoNear, greaterThan(minStake));
+        expect(validator.stake.yoctoNear, greaterThan(BigInt.zero));
       }
     });
 

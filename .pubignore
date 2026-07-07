@@ -1,5 +1,7 @@
-# Not needed by package consumers — keep the published package lean.
-docs/
+# Not needed by package consumers - keep the published package lean.
+/docs/
 coverage/
 test/CLAUDE_STATUS.md
 .github/
+/HANDOFF.md
+pubspec_overrides.yaml

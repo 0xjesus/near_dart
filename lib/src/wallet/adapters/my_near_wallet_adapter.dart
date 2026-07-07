@@ -9,7 +9,12 @@ class MyNearWalletConfig {
     required this.successUrl,
     required this.failureUrl,
     this.network = MyNearWalletNetwork.mainnet,
-  });
+    NearNetwork? networkConfig,
+  }) : networkConfig =
+           networkConfig ??
+           (network == MyNearWalletNetwork.mainnet
+               ? NearNetwork.mainnet
+               : NearNetwork.testnet);
 
   /// The contract to request access for.
   final AccountId contractId;
@@ -23,13 +28,18 @@ class MyNearWalletConfig {
   /// Network to connect to.
   final MyNearWalletNetwork network;
 
+  /// Complete network metadata used for wallet URLs and explorer links.
+  final NearNetwork networkConfig;
+
   /// Gets the wallet base URL for this network.
   String get walletUrl {
+    final walletUrl = networkConfig.myNearWalletUrl;
+    if (walletUrl != null) return walletUrl;
     switch (network) {
       case MyNearWalletNetwork.mainnet:
-        return 'https://app.mynearwallet.com';
+        return NearNetwork.mainnet.myNearWalletUrl!;
       case MyNearWalletNetwork.testnet:
-        return 'https://testnet.mynearwallet.com';
+        return NearNetwork.testnet.myNearWalletUrl!;
     }
   }
 }

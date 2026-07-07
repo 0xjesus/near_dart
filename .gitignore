@@ -47,3 +47,6 @@ coverage/
 # Secrets
 *.env
 credentials.json
+
+# Local handoff/continuation notes (not for publication)
+HANDOFF.md

@@ -15,7 +15,7 @@ one controller gives you the same API whatever the user picked. Built on
 
 ```yaml
 dependencies:
-  near_wallet_connect: ^0.3.0
+  near_wallet_connect: ^0.4.0
 ```
 
 ## Use it (this is the whole integration)
@@ -77,6 +77,44 @@ await wallet.sendTransactions([
 ```
 
 That's it. See [`example/`](example/) for a complete minimal app.
+
+## Customize the UI
+
+Use the default button for fast integration:
+
+```dart
+NearConnectButton(controller: wallet, compact: true);
+```
+
+Or keep the controller/picker logic and replace the visual states:
+
+```dart
+NearConnectButton(
+  controller: wallet,
+  connectBuilder: (context, controller, onPressed) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(Icons.account_balance_wallet_outlined),
+      label: const Text('Connect'),
+    );
+  },
+  connectedBuilder: (context, controller, onDisconnect) {
+    return NearAccountBadge(
+      accountId: controller.account!.accountId,
+      wallet: controller.walletOption,
+      onDisconnect: onDisconnect,
+      compact: true,
+    );
+  },
+);
+```
+
+Reusable pieces:
+
+- `NearWalletPicker`
+- `NearAccountBadge`
+- `NearBalanceText`
+- `NearTransactionStatusView`
 
 ## Supported wallets
 

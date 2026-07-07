@@ -63,7 +63,7 @@ void main() {
 
       final account = result.getOrThrow();
       // Aurora is a major contract
-      expect(account.codeHash, isNotEmpty);
+      expect(account.hasContract, isTrue);
     });
 
     test('wrap.near contract exists', () async {
@@ -80,10 +80,7 @@ void main() {
 
       final account = result.getOrThrow();
       // Contract should have code deployed
-      expect(
-        account.codeHash,
-        isNot(equals('11111111111111111111111111111111')),
-      );
+      expect(account.hasContract, isTrue);
     });
 
     test('usdt.tether-token.near exists', () async {

@@ -201,6 +201,25 @@ jobs:
       - name: Analyze
         run: dart analyze
 
+  wallet-connect:
+    name: near_wallet_connect
+    runs-on: ubuntu-latest
+    needs: analyze
+    defaults:
+      run:
+        working-directory: packages/near_wallet_connect
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze lib test
+      - name: Test
+        run: flutter test
+
   # Example app builds on every target platform. The SDK is pure Dart, so
   # these mainly guard the example + plugin integration (deep links, storage).
   example-android:
@@ -252,6 +271,58 @@ jobs:
         working-directory: example
         timeout-minutes: 15
 
+  example-linux:
+    name: Example builds (Linux)
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
+      - name: Enable desktop
+        run: flutter config --enable-linux-desktop
+      - name: Build Linux
+        run: flutter build linux --debug
+        working-directory: example
+        timeout-minutes: 20
+
+  example-macos:
+    name: Example builds (macOS)
+    runs-on: macos-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Enable desktop
+        run: flutter config --enable-macos-desktop
+      - name: Build macOS
+        run: flutter build macos --debug
+        working-directory: example
+        timeout-minutes: 25
+
+  example-windows:
+    name: Example builds (Windows)
+    runs-on: windows-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Enable desktop
+        run: flutter config --enable-windows-desktop
+      - name: Build Windows
+        run: flutter build windows --debug
+        working-directory: example
+        timeout-minutes: 25
+
   all-tests-pass:
     name: All Tests Pass
     runs-on: ubuntu-latest
@@ -262,9 +333,13 @@ jobs:
       - platform-vm
       - platform-chrome
       - jsonrpc-client
+      - wallet-connect
       - example-android
       - example-ios
       - example-web
+      - example-linux
+      - example-macos
+      - example-windows
     if: always()
     steps:
       - name: Check all required jobs passed
@@ -275,9 +350,13 @@ jobs:
              [ "${{ needs.platform-vm.result }}" != "success" ] || \
              [ "${{ needs.platform-chrome.result }}" != "success" ] || \
              [ "${{ needs.jsonrpc-client.result }}" != "success" ] || \
+             [ "${{ needs.wallet-connect.result }}" != "success" ] || \
              [ "${{ needs.example-android.result }}" != "success" ] || \
              [ "${{ needs.example-ios.result }}" != "success" ] || \
-             [ "${{ needs.example-web.result }}" != "success" ]; then
+             [ "${{ needs.example-web.result }}" != "success" ] || \
+             [ "${{ needs.example-linux.result }}" != "success" ] || \
+             [ "${{ needs.example-macos.result }}" != "success" ] || \
+             [ "${{ needs.example-windows.result }}" != "success" ]; then
             echo "One or more required jobs failed"
             exit 1
           fi

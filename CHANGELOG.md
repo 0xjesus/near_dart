@@ -1,3 +1,22 @@
+## 0.5.0
+
+- Add experimental NEAR Intents support: typed 1Click REST client
+  (`OneClickClient`), generated-intent NEP-413 helpers, ANY_INPUT withdrawal
+  status, asset catalog and exact amount helpers, quote builder, swap lifecycle
+  controller, Explorer API client, and Message Bus JSON-RPC client
+  (`SolverRelayClient`) for partner solver integrations.
+- Add typed NEP helpers for FT (NEP-141), NFT (NEP-171), and storage
+  management (NEP-145) workflows.
+- Add typed network configuration (`NearNetwork.mainnet`, `.testnet`,
+  `.custom(...)`) with RPC, fallback, WalletConnect chain, wallet, faucet, and
+  explorer URLs.
+- Add adoption docs: 5-minute guide, wallet recipes, troubleshooting,
+  release checklist, NEAR Intents, and NEAR AI guidance.
+- Expand CI coverage with `near_wallet_connect` tests and example builds for
+  Linux, macOS, and Windows.
+- Improve `NearConnectButton` customization and add lightweight Flutter wallet
+  widgets in `near_wallet_connect`.
+
 ## 0.4.0
 
 Security release addressing an external audit (2026-07-05). Thanks to

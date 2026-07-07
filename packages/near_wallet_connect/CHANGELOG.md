@@ -1,3 +1,12 @@
+## 0.4.0
+
+- `NearConnectButton` now supports custom builders for disconnected,
+  connected, error, and wallet-picker states, plus compact/disabled modes.
+- Add lightweight widgets: `NearWalletPicker`, `NearAccountBadge`,
+  `NearBalanceText`, and `NearTransactionStatusView`.
+- Add widget tests for the default and custom connect UI.
+- Requires `near_dart ^0.5.0`.
+
 ## 0.3.0
 
 Security release addressing an external audit (2026-07-05).

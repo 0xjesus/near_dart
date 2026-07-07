@@ -14,12 +14,14 @@ void main() {
     test('testnet defaults to FastNear', () {
       final client = NearRpcClient.testnet();
       expect(client.rpcUrl, 'https://test.rpc.fastnear.com');
+      expect(client.network, NearNetwork.testnet);
       client.close();
     });
 
     test('mainnet defaults to FastNear', () {
       final client = NearRpcClient.mainnet();
       expect(client.rpcUrl, 'https://free.rpc.fastnear.com');
+      expect(client.network, NearNetwork.mainnet);
       client.close();
     });
 
@@ -30,6 +32,22 @@ void main() {
       expect(mainnet.fallbackUrls, isNotEmpty);
       testnet.close();
       mainnet.close();
+    });
+
+    test('can create a client from a custom network config', () {
+      final network = NearNetwork.custom(
+        name: 'sandbox',
+        rpcUrl: 'https://rpc.example.com',
+        fallbackRpcUrls: const ['https://rpc-fallback.example.com'],
+        explorerUrl: 'https://explorer.example.com',
+      );
+
+      final client = NearRpcClient.forNetwork(network);
+
+      expect(client.network, network);
+      expect(client.rpcUrl, 'https://rpc.example.com');
+      expect(client.fallbackUrls, ['https://rpc-fallback.example.com']);
+      client.close();
     });
   });
 

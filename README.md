@@ -19,6 +19,11 @@ A type-safe, platform-agnostic SDK for building NEAR Protocol applications with 
 - **High-Level `Account` API**: `transfer()` / `callFunction()` in one call (nonce + block hash resolved automatically)
 - **RPC Client**: Query blockchain state, accounts, contracts, and validators — FastNear endpoints by default, automatic failover
 - **Wallet Integration**: Connect wallets via WalletConnect or deep links
+- **NEAR Intents**: 1Click asset discovery, quote builder, swap lifecycle
+  polling, Explorer history, signed-intent helpers, and Message Bus JSON-RPC
+  for partner solver integrations
+- **Typed Network Config**: `NearNetwork.mainnet`, `NearNetwork.testnet`, and
+  `NearNetwork.custom(...)` with RPC, wallet, explorer, and chain metadata
 - **Type-Safe Primitives**: `AccountId`, `NearToken`, `PublicKey`, `CryptoHash`
 - **Transaction Building**: All NEAR actions, including NEP-591 Global Contracts
 - **NEP-413 Support**: Message signing for authentication
@@ -37,13 +42,28 @@ A type-safe, platform-agnostic SDK for building NEAR Protocol applications with 
 | Secure key storage | ✅ Keystore | ✅ Keychain | ⚠️ plain storage (no OS secrets on web) | ✅ Keychain | ✅ DPAPI | ✅ libsecret |
 
 Rows marked *untested* should work (pure Dart + url_launcher) but have no
-verified end-to-end run yet. Security details: [docs/security.md](docs/security.md).
+verified end-to-end run yet. Security details:
+[docs/security.md](https://github.com/0xjesus/near_dart/blob/main/docs/security.md).
+NEAR Intents guide:
+[docs/intents.md](https://github.com/0xjesus/near_dart/blob/main/docs/intents.md).
+Reference app evidence:
+[NearCoffee SDK + Intents tutorial](https://raw.githubusercontent.com/0xjesus/near-coffee/main/docs/demo/nearcoffee-sdk-intents-tutorial.mp4).
+
+## Guides
+
+- [First transaction in 5 minutes](https://github.com/0xjesus/near_dart/blob/main/docs/5-minute-guide.md)
+- [Wallet recipes](https://github.com/0xjesus/near_dart/blob/main/docs/wallet-recipes.md)
+- [NEAR Intents](https://github.com/0xjesus/near_dart/blob/main/docs/intents.md)
+- [NEAR AI](https://github.com/0xjesus/near_dart/blob/main/docs/near-ai.md)
+- [Security model](https://github.com/0xjesus/near_dart/blob/main/docs/security.md)
+- [Troubleshooting](https://github.com/0xjesus/near_dart/blob/main/docs/troubleshooting.md)
+- [Release checklist](https://github.com/0xjesus/near_dart/blob/main/docs/release.md)
 
 ## Installation
 
 ```yaml
 dependencies:
-  near_dart: ^0.4.0
+  near_dart: ^0.5.0
 ```
 
 ## Quick Start
@@ -184,6 +204,51 @@ if (result.isSuccess) {
   print('Current validators: ${validators.currentValidators.length}');
 }
 ```
+
+### Typed Network Configuration
+
+```dart
+final network = NearNetwork.custom(
+  name: 'localnet',
+  rpcUrl: 'http://127.0.0.1:3030',
+  explorerUrl: 'http://127.0.0.1:4000',
+);
+
+final client = NearRpcClient.forNetwork(network);
+print(network.transactionUrl('tx-hash'));
+```
+
+## NEAR Intents
+
+Build cross-chain swap UX with the 1Click API without hand-routing solver
+transactions:
+
+```dart
+final intents = OneClickClient();
+final catalog = OneClickAssetCatalog(client: intents);
+final builder = OneClickQuoteBuilder();
+
+final wnear = await catalog.requireByAssetId('nep141:wrap.near');
+final usdc = await catalog.requireByAssetId('nep141:usdc.near');
+
+final request = builder.exactInput(
+  originToken: wnear,
+  destinationToken: usdc,
+  amount: '0.1', // converted exactly from decimals, no float math
+  refundTo: 'alice.near',
+  recipient: 'alice.near',
+);
+
+final swap = OneClickSwapController(client: intents);
+final quote = await swap.quote(request);
+
+print(quote.quote.amountOutFormatted);
+```
+
+For live swaps set `dry: false`, send funds to the returned deposit address,
+then use `submitDeposit()` and `pollStatus()` until `success`, `refunded`, or
+`failed`. Historical 1Click activity is available through
+`OneClickExplorerClient` for dashboards and support tooling.
 
 ## Wallet Integration
 
@@ -334,8 +399,8 @@ Recorded evidence from the example app running against **real NEAR testnet**
 
 | Demo | Evidence | On-chain proof |
 |---|---|---|
-| Android: generate key → faucet → **sign & send on-chain** | [video](docs/demo/android-sign-and-send-onchain.mp4) / [gif](docs/demo/android-sign-and-send-onchain.gif) | [`JByxPfTt…34cZG`](https://testnet.nearblocks.io/txns/JByxPfTtJwhEatZhU8FimkbkazygFajvg5ygnTH34cZG) |
-| Android: wallet connect → browser → `nearsdk://` deep link → connected | [video](docs/demo/android-wallet-connect-roundtrip.mp4) / [gif](docs/demo/android-wallet-connect-roundtrip.gif) | function-call key provisioning flow |
+| Android: generate key -> faucet -> **sign & send on-chain** | [video](https://github.com/0xjesus/near_dart/blob/main/docs/demo/android-sign-and-send-onchain.mp4) / [gif](https://github.com/0xjesus/near_dart/blob/main/docs/demo/android-sign-and-send-onchain.gif) | [`JByxPfTt...34cZG`](https://testnet.nearblocks.io/txns/JByxPfTtJwhEatZhU8FimkbkazygFajvg5ygnTH34cZG) |
+| Android: wallet connect -> browser -> `nearsdk://` deep link -> connected | [video](https://github.com/0xjesus/near_dart/blob/main/docs/demo/android-wallet-connect-roundtrip.mp4) / [gif](https://github.com/0xjesus/near_dart/blob/main/docs/demo/android-wallet-connect-roundtrip.gif) | function-call key provisioning flow |
 
 Additionally verified: web (Chrome, dart2js **and** dart2wasm — byte-identical
 signatures vs near-api-js), real on-chain transfers from the browser, and a

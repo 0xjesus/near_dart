@@ -42,6 +42,23 @@ void main() {
       expect(config.network, equals(MyNearWalletNetwork.mainnet));
       expect(config.walletUrl, equals('https://app.mynearwallet.com'));
     });
+
+    test('custom network config can override wallet URL', () {
+      final config = MyNearWalletConfig(
+        contractId: AccountId('app.sandbox'),
+        successUrl: 'sandbox://success',
+        failureUrl: 'sandbox://failure',
+        networkConfig: NearNetwork.custom(
+          name: 'sandbox',
+          rpcUrl: 'https://rpc.example.com',
+          explorerUrl: 'https://explorer.example.com',
+          myNearWalletUrl: 'https://wallet.example.com',
+        ),
+      );
+
+      expect(config.walletUrl, 'https://wallet.example.com');
+      expect(config.networkConfig.name, 'sandbox');
+    });
   });
 
   group('handleSignMessageCallback', () {

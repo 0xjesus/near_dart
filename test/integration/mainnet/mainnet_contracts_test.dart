@@ -24,6 +24,12 @@ void main() {
     return error.code == -429 || error.message.contains('DEPRECATED');
   }
 
+  bool isTooLargeStateError(RpcError error) {
+    final errorText = '${error.message} ${error.data}'.toLowerCase();
+    return errorText.contains('too_large_contract_state') ||
+        errorText.contains('too large');
+  }
+
   group('Mainnet: wrap.near Contract', () {
     test('ft_metadata returns wNEAR metadata', () async {
       final result = await client.callFunction(
@@ -180,6 +186,17 @@ void main() {
 
       if (result.isFailure && isRateLimitError((result as RpcFailure).error)) {
         return;
+      }
+
+      if (result.isFailure) {
+        final error = (result as RpcFailure).error;
+        printOnFailure(
+          'viewState failed with message=${error.message}, '
+          'code=${error.code}, data=${error.data}, cause=${error.cause}',
+        );
+        if (isTooLargeStateError(error)) {
+          return;
+        }
       }
 
       expect(result.isSuccess, isTrue);

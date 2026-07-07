@@ -34,16 +34,6 @@ class WalletConnectConfig {
   final NearNetwork network;
 }
 
-/// NEAR network configuration.
-enum NearNetwork {
-  mainnet('mainnet', 'near:mainnet'),
-  testnet('testnet', 'near:testnet');
-
-  const NearNetwork(this.name, this.chainId);
-  final String name;
-  final String chainId;
-}
-
 /// WalletConnect session data.
 class WalletConnectSession {
   const WalletConnectSession({

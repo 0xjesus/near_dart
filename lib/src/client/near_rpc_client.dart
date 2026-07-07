@@ -63,8 +63,24 @@ class NearRpcClient {
     required this.rpcUrl,
     this.fallbackUrls = const [],
     this.timeout = const Duration(seconds: 30),
+    this.network,
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
+
+  /// Creates a client from a typed [NearNetwork] configuration.
+  factory NearRpcClient.forNetwork(
+    NearNetwork network, {
+    http.Client? httpClient,
+    Duration timeout = const Duration(seconds: 30),
+  }) {
+    return NearRpcClient(
+      rpcUrl: network.rpcUrl,
+      fallbackUrls: network.fallbackRpcUrls,
+      timeout: timeout,
+      network: network,
+      httpClient: httpClient,
+    );
+  }
 
   /// Creates a client configured for NEAR testnet.
   ///
@@ -75,9 +91,8 @@ class NearRpcClient {
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
   }) {
-    return NearRpcClient(
-      rpcUrl: 'https://test.rpc.fastnear.com',
-      fallbackUrls: const ['https://rpc.testnet.near.org'],
+    return NearRpcClient.forNetwork(
+      NearNetwork.testnet,
       timeout: timeout,
       httpClient: httpClient,
     );
@@ -92,9 +107,8 @@ class NearRpcClient {
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
   }) {
-    return NearRpcClient(
-      rpcUrl: 'https://free.rpc.fastnear.com',
-      fallbackUrls: const ['https://rpc.mainnet.near.org'],
+    return NearRpcClient.forNetwork(
+      NearNetwork.mainnet,
       timeout: timeout,
       httpClient: httpClient,
     );
@@ -109,6 +123,9 @@ class NearRpcClient {
   /// Per-request timeout. A request exceeding this is treated as a
   /// transport failure (`RpcError.timeout`) and triggers failover.
   final Duration timeout;
+
+  /// Typed network metadata, when the client was created from a known network.
+  final NearNetwork? network;
 
   final http.Client _httpClient;
 
