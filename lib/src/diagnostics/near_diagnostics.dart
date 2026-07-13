@@ -8,11 +8,13 @@ const List<String> _sensitiveKeyFragments = <String>[
   'signature',
   'payload',
   'body',
-  'signedtx',
-  'signedtransaction',
   'messagebody',
   'nonce',
 ];
+
+final RegExp _signedTransactionKeyPattern = RegExp(
+  r'(^|_)(?:signed_(?:transaction|tx)|signed(?:transaction|tx))(?=_|$)',
+);
 
 /// Severity assigned to a diagnostics event.
 enum NearLogLevel {
@@ -159,5 +161,18 @@ Object? _redactValue(String? key, Object? value) {
 
 bool _isSensitiveKey(String key) {
   final normalized = key.toLowerCase().replaceAll(RegExp('[_-]'), '');
-  return _sensitiveKeyFragments.any(normalized.contains);
+  return normalized == 'message' ||
+      _isSignedTransactionKey(key) ||
+      _sensitiveKeyFragments.any(normalized.contains);
+}
+
+bool _isSignedTransactionKey(String key) {
+  final boundaryNormalized = key
+      .replaceAllMapped(
+        RegExp(r'([a-z0-9])([A-Z])'),
+        (match) => '${match[1]}_${match[2]}',
+      )
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  return _signedTransactionKeyPattern.hasMatch(boundaryNormalized);
 }

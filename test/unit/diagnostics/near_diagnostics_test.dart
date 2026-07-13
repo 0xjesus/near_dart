@@ -41,7 +41,7 @@ void main() {
   });
 
   test(
-    'redacts canonical signed transactions and message bodies nested in lists',
+    'redacts canonical signed transactions and NEP-413 messages nested in lists',
     () {
       const signedTransactionSnakeCase = 'signed transaction snake sentinel';
       const signedTransactionCamelCase = 'signed transaction camel sentinel';
@@ -55,7 +55,7 @@ void main() {
             {
               'signed_transaction': signedTransactionSnakeCase,
               'signedTransaction': signedTransactionCamelCase,
-              'messageBody': nep413MessageBody,
+              'message': nep413MessageBody,
             },
           ],
         },
@@ -73,6 +73,40 @@ void main() {
       expect(event.toString(), contains('<redacted>'));
     },
   );
+
+  test('distinguishes signed transaction keys from safe similar keys', () {
+    const decoratedSignedTransaction = 'decorated signed transaction sentinel';
+    const decoratedSignedTx = 'decorated signed tx sentinel';
+    const statusMessage = 'request completed';
+    const errorMessage = 'request failed';
+    final event = NearLogEvent(
+      level: NearLogLevel.info,
+      type: NearLogEventType.rpcRequestStarted,
+      operation: 'query',
+      metadata: {
+        'requestSignedTransaction': decoratedSignedTransaction,
+        'wallet-signed-tx-payload': decoratedSignedTx,
+        'unsignedTransactionCount': 2,
+        'unsignedTxCount': 3,
+        'statusMessage': statusMessage,
+        'messageCount': 4,
+        'errorMessage': errorMessage,
+      },
+    );
+
+    for (final value in <String>[
+      decoratedSignedTransaction,
+      decoratedSignedTx,
+    ]) {
+      expect(event.metadata.toString(), isNot(contains(value)));
+      expect(event.toString(), isNot(contains(value)));
+    }
+    expect(event.metadata['unsignedTransactionCount'], 2);
+    expect(event.metadata['unsignedTxCount'], 3);
+    expect(event.metadata['statusMessage'], statusMessage);
+    expect(event.metadata['messageCount'], 4);
+    expect(event.metadata['errorMessage'], errorMessage);
+  });
 
   test('deeply copies and freezes nested metadata collections', () {
     final nested = <String, Object?>{
