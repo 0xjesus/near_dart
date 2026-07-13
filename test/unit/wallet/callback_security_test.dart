@@ -10,8 +10,10 @@ import 'package:test/test.dart';
 
 void main() {
   late MyNearWalletAdapter adapter;
+  late List<Uri> launchedWalletUrls;
 
   setUp(() {
+    launchedWalletUrls = <Uri>[];
     adapter = MyNearWalletAdapter(
       config: MyNearWalletConfig(
         contractId: AccountId('contract.testnet'),
@@ -19,9 +21,36 @@ void main() {
         failureUrl: 'myapp://wallet/failure',
         network: MyNearWalletNetwork.testnet,
       ),
-      launchUrl: (_) async => true,
+      launchUrl: (uri) async {
+        launchedWalletUrls.add(uri);
+        return true;
+      },
     );
   });
+
+  Uri launchedCallback(String parameter) {
+    return Uri.parse(launchedWalletUrls.last.queryParameters[parameter]!);
+  }
+
+  Uri withQuery(Uri callback, Map<String, String> values) {
+    return callback.replace(
+      queryParameters: <String, Object>{
+        ...callback.queryParametersAll,
+        ...values,
+      },
+    );
+  }
+
+  Uri withFragment(Uri callback, Map<String, String> values) {
+    final configured = callback.fragment.isEmpty
+        ? const <String, String>{}
+        : Uri.splitQueryString(callback.fragment);
+    return callback.replace(
+      fragment: Uri(
+        queryParameters: <String, String>{...configured, ...values},
+      ).query,
+    );
+  }
 
   Future<void> beginSignMessage(SignMessageParams request) async {
     await expectLater(
@@ -74,7 +103,9 @@ void main() {
       await adapter.signIn(contractId: AccountId('contract.testnet'));
 
       final account = await adapter.completeSignIn(
-        Uri.parse('myapp://wallet/success?account_id=alice.testnet'),
+        withQuery(launchedCallback('success_url'), {
+          'account_id': 'alice.testnet',
+        }),
       );
 
       expect(account, isNull);
@@ -84,10 +115,10 @@ void main() {
       await adapter.signIn(contractId: AccountId('contract.testnet'));
 
       final account = await adapter.completeSignIn(
-        Uri.parse(
-          'myapp://wallet/success?account_id=alice.testnet'
-          '&public_key=ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
-        ),
+        withQuery(launchedCallback('success_url'), {
+          'account_id': 'alice.testnet',
+          'public_key': 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+        }),
       );
 
       expect(account, isNull);
@@ -99,10 +130,10 @@ void main() {
       final pending = await adapter.keyStore.getPendingKey();
 
       final account = await adapter.completeSignIn(
-        Uri.parse(
-          'myapp://wallet/success?account_id=alice.testnet'
-          '&public_key=${pending!.publicKey.value}',
-        ),
+        withQuery(launchedCallback('success_url'), {
+          'account_id': 'alice.testnet',
+          'public_key': pending!.publicKey.value,
+        }),
       );
 
       expect(account, isNotNull);
@@ -118,7 +149,10 @@ void main() {
           failureUrl: 'myapp://wallet/failure',
           network: MyNearWalletNetwork.testnet,
         ),
-        launchUrl: (_) async => true,
+        launchUrl: (uri) async {
+          launchedWalletUrls.add(uri);
+          return true;
+        },
         logger: events.add,
       );
       await adapter.signIn(contractId: AccountId('contract.testnet'));
@@ -126,10 +160,10 @@ void main() {
 
       expect(
         await adapter.completeSignIn(
-          Uri.parse(
-            'myapp://foreign/callback?account_id=alice.testnet'
-            '&public_key=${pending!.publicKey.value}',
-          ),
+          withQuery(launchedCallback('success_url').replace(host: 'foreign'), {
+            'account_id': 'alice.testnet',
+            'public_key': pending!.publicKey.value,
+          }),
         ),
         isNull,
       );
@@ -138,10 +172,10 @@ void main() {
       ]);
 
       final account = await adapter.completeSignIn(
-        Uri.parse(
-          'myapp://wallet/success?account_id=alice.testnet'
-          '&public_key=${pending.publicKey.value}',
-        ),
+        withQuery(launchedCallback('success_url'), {
+          'account_id': 'alice.testnet',
+          'public_key': pending.publicKey.value,
+        }),
       );
       expect(account?.accountId.value, 'alice.testnet');
       expect(events.map((event) => event.type), [
@@ -156,10 +190,10 @@ void main() {
       final pending = await adapter.keyStore.getPendingKey();
 
       final account = await adapter.completeSignIn(
-        Uri.parse(
-          'myapp://wallet/failure?account_id=alice.testnet'
-          '&public_key=${pending!.publicKey.value}',
-        ),
+        withQuery(launchedCallback('failure_url'), {
+          'account_id': 'alice.testnet',
+          'public_key': pending!.publicKey.value,
+        }),
       );
 
       expect(account, isNull);
@@ -187,16 +221,164 @@ void main() {
         throwsA(isA<NearSdkException>()),
       );
       final pending = await adapter.keyStore.getPendingKey();
-      final callback = Uri.parse(
-        'myapp://wallet/success?account_id=alice.testnet'
-        '&public_key=${pending!.publicKey.value}',
-      );
+      final callback = withQuery(launchedCallback('success_url'), {
+        'account_id': 'alice.testnet',
+        'public_key': pending!.publicKey.value,
+      });
       expect(await adapter.completeSignIn(callback), isNotNull);
       expect(await adapter.completeSignIn(callback), isNull);
+    });
+
+    test('uses one secure correlation value for both sign-in routes', () async {
+      adapter = MyNearWalletAdapter(
+        config: MyNearWalletConfig(
+          contractId: AccountId('contract.testnet'),
+          successUrl: 'myapp://wallet/result?outcome=success',
+          failureUrl: 'myapp://wallet/result?outcome=failure',
+          network: MyNearWalletNetwork.testnet,
+        ),
+        launchUrl: (uri) async {
+          launchedWalletUrls.add(uri);
+          return true;
+        },
+      );
+
+      await adapter.signIn(contractId: AccountId('contract.testnet'));
+      final success = launchedCallback('success_url');
+      final failure = launchedCallback('failure_url');
+      final successKeys = success.queryParameters.keys
+          .where((key) => key != 'outcome')
+          .toList();
+      final failureKeys = failure.queryParameters.keys
+          .where((key) => key != 'outcome')
+          .toList();
+
+      expect(successKeys.length == 1, isTrue);
+      expect(failureKeys.length == 1, isTrue);
+      expect(successKeys.single == failureKeys.single, isTrue);
+      expect(
+        success.queryParameters[successKeys.single] ==
+            failure.queryParameters[failureKeys.single],
+        isTrue,
+      );
+      expect(success.queryParameters[successKeys.single]!.isNotEmpty, isTrue);
+    });
+
+    test('adds correlation to every callback URL sent to the wallet', () async {
+      await adapter.signIn(contractId: AccountId('contract.testnet'));
+      expect(
+        launchedCallback('success_url').queryParameters.length == 1,
+        isTrue,
+      );
+      expect(
+        launchedCallback('failure_url').queryParameters.length == 1,
+        isTrue,
+      );
+
+      await adapter.signOut();
+      await beginTransactions();
+      expect(
+        launchedCallback('callbackUrl').queryParameters.length == 1,
+        isTrue,
+      );
+
+      await adapter.signOut();
+      await beginSignMessage(
+        SignMessageParams(
+          message: 'Sign in',
+          recipient: 'example.app',
+          nonce: List<int>.filled(32, 3),
+        ),
+      );
+      expect(
+        launchedCallback('callbackUrl').queryParameters.length == 1,
+        isTrue,
+      );
+    });
+
+    test('distinguishes same-path success and failure query routes', () async {
+      adapter = MyNearWalletAdapter(
+        config: MyNearWalletConfig(
+          contractId: AccountId('contract.testnet'),
+          successUrl: 'myapp://wallet/result?outcome=success',
+          failureUrl: 'myapp://wallet/result?outcome=failure',
+          network: MyNearWalletNetwork.testnet,
+        ),
+        launchUrl: (uri) async {
+          launchedWalletUrls.add(uri);
+          return true;
+        },
+      );
+
+      await adapter.signIn(contractId: AccountId('contract.testnet'));
+      var pending = await adapter.keyStore.getPendingKey();
+      final success = await adapter.completeSignIn(
+        withQuery(launchedCallback('success_url'), {
+          'account_id': 'alice.testnet',
+          'public_key': pending!.publicKey.value,
+        }),
+      );
+      expect(success?.accountId.value, 'alice.testnet');
+
+      await adapter.signOut();
+      await adapter.signIn(contractId: AccountId('contract.testnet'));
+      pending = await adapter.keyStore.getPendingKey();
+      final failure = await adapter.completeSignIn(
+        withQuery(launchedCallback('failure_url'), {
+          'account_id': 'alice.testnet',
+          'public_key': pending!.publicKey.value,
+        }),
+      );
+      expect(failure, isNull);
+      expect(await adapter.keyStore.getPendingKey(), isNull);
+    });
+
+    test('replayed sign-in cannot consume the next sign-in flow', () async {
+      await adapter.signIn(contractId: AccountId('contract.testnet'));
+      var pending = await adapter.keyStore.getPendingKey();
+      final firstCallback = withQuery(launchedCallback('success_url'), {
+        'account_id': 'alice.testnet',
+        'public_key': pending!.publicKey.value,
+      });
+      expect(await adapter.completeSignIn(firstCallback), isNotNull);
+
+      await adapter.signOut();
+      await adapter.signIn(contractId: AccountId('contract.testnet'));
+      pending = await adapter.keyStore.getPendingKey();
+      final secondCallback = withQuery(launchedCallback('success_url'), {
+        'account_id': 'bob.testnet',
+        'public_key': pending!.publicKey.value,
+      });
+
+      expect(await adapter.completeSignIn(firstCallback), isNull);
+      final stillPending = await adapter.keyStore.getPendingKey();
+      expect(
+        stillPending != null &&
+            stillPending.publicKey.value == pending.publicKey.value,
+        isTrue,
+      );
+      expect(
+        (await adapter.completeSignIn(secondCallback))?.accountId.value,
+        'bob.testnet',
+      );
     });
   });
 
   group('handleSignMessageCallback required fields', () {
+    test('remains callable when no secure flow is pending', () {
+      final signed = adapter.handleSignMessageCallback(
+        Uri.parse(
+          'myapp://wallet/success#accountId=alice.testnet'
+          '&publicKey='
+          'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'
+          '&signature=legacy-signature',
+        ),
+      );
+
+      expect(signed.accountId.value, 'alice.testnet');
+      expect(signed.signature, 'legacy-signature');
+    });
+
     test('throws when signature or publicKey is missing', () async {
       await beginSignMessage(
         SignMessageParams(
@@ -207,7 +389,9 @@ void main() {
       );
       expect(
         () => adapter.handleSignMessageCallback(
-          Uri.parse('myapp://wallet/success#accountId=alice.testnet'),
+          withFragment(launchedCallback('callbackUrl'), {
+            'accountId': 'alice.testnet',
+          }),
         ),
         throwsA(
           allOf(
@@ -244,23 +428,23 @@ void main() {
       String? tamperMessage,
       String? state = 'csrf-123',
     }) async {
+      final callbackUrl = launchedCallback('callbackUrl');
       final signed = await signNep413Message(
         payload: Nep413Payload(
           message: tamperMessage ?? request.message,
           recipient: request.recipient,
           nonce: request.nonce,
-          callbackUrl: 'myapp://wallet/success',
+          callbackUrl: callbackUrl.toString(),
         ),
         keyPair: walletKey,
         accountId: AccountId('alice.testnet'),
       );
-      return Uri.parse(
-        'myapp://wallet/success'
-        '#accountId=alice.testnet'
-        '&publicKey=${Uri.encodeComponent(walletKey.publicKey.value)}'
-        '&signature=${Uri.encodeComponent(signed.signature)}'
-        '${state != null ? '&state=${Uri.encodeComponent(state)}' : ''}',
-      );
+      return withFragment(callbackUrl, {
+        'accountId': 'alice.testnet',
+        'publicKey': walletKey.publicKey.value,
+        'signature': signed.signature,
+        if (state != null) 'state': state,
+      });
     }
 
     test('accepts a genuine wallet signature', () async {
@@ -306,6 +490,36 @@ void main() {
         ),
       );
     });
+
+    test(
+      'sync parser cannot consume a pending secure sign-message flow',
+      () async {
+        final unauthenticated = withFragment(launchedCallback('callbackUrl'), {
+          'accountId': 'alice.testnet',
+          'publicKey': walletKey.publicKey.value,
+          'signature': 'not-authenticated',
+          'state': request.state!,
+        });
+
+        expect(
+          () => adapter.handleSignMessageCallback(unauthenticated),
+          throwsA(
+            isA<NearSdkException>().having(
+              (error) => error.code,
+              'code',
+              NearErrorCode.walletResponseInvalid,
+            ),
+          ),
+        );
+        expect(
+          (await adapter.completeSignMessage(
+            await walletCallback(),
+            request: request,
+          )).accountId.value,
+          'alice.testnet',
+        );
+      },
+    );
 
     test('compares returned null state exactly', () async {
       final noStateRequest = SignMessageParams(
@@ -380,10 +594,10 @@ void main() {
         await adapter.signIn(contractId: AccountId('contract.testnet'));
         final pendingKey = await adapter.keyStore.getPendingKey();
         await adapter.completeSignIn(
-          Uri.parse(
-            'myapp://wallet/success?account_id=alice.testnet'
-            '&public_key=${pendingKey!.publicKey.value}',
-          ),
+          withQuery(launchedCallback('success_url'), {
+            'account_id': 'alice.testnet',
+            'public_key': pendingKey!.publicKey.value,
+          }),
         );
         await beginSignMessage(request);
         final signed = await signNep413Message(
@@ -391,17 +605,16 @@ void main() {
             message: request.message,
             recipient: request.recipient,
             nonce: request.nonce,
-            callbackUrl: 'myapp://wallet/success',
+            callbackUrl: launchedCallback('callbackUrl').toString(),
           ),
           keyPair: walletKey,
           accountId: AccountId('alice.testnet'),
         );
-        final callback = Uri.parse(
-          'myapp://wallet/success'
-          '#publicKey=${Uri.encodeComponent(walletKey.publicKey.value)}'
-          '&signature=${Uri.encodeComponent(signed.signature)}'
-          '&state=${request.state}',
-        );
+        final callback = withFragment(launchedCallback('callbackUrl'), {
+          'publicKey': walletKey.publicKey.value,
+          'signature': signed.signature,
+          'state': request.state!,
+        });
 
         await expectLater(
           adapter.completeSignMessage(callback, request: request),
@@ -427,7 +640,10 @@ void main() {
 
         expect(
           () => adapter.handleTransactionCallback(
-            Uri.parse('myapp://foreign/callback?transactionHashes=$validHash'),
+            withQuery(
+              launchedCallback('callbackUrl').replace(host: 'foreign'),
+              {'transactionHashes': validHash},
+            ),
           ),
           throwsA(
             isA<NearSdkException>().having(
@@ -439,7 +655,9 @@ void main() {
         );
 
         final results = adapter.handleTransactionCallback(
-          Uri.parse('myapp://custom/result?transactionHashes=$validHash'),
+          withQuery(launchedCallback('callbackUrl'), {
+            'transactionHashes': validHash,
+          }),
         );
         expect(results.single.transactionHash.value, validHash);
         expect(
@@ -448,6 +666,127 @@ void main() {
         );
       },
     );
+
+    test(
+      'rejects missing and wrong correlation without consuming flow',
+      () async {
+        await beginTransactions();
+        final callback = launchedCallback('callbackUrl');
+        final correlationKey = callback.queryParameters.keys.single;
+        final missing = callback.replace(queryParameters: const {});
+        final wrong = callback.replace(
+          queryParameters: {correlationKey: 'wrong-correlation'},
+        );
+
+        for (final invalid in [missing, wrong]) {
+          expect(
+            () => adapter.handleTransactionCallback(
+              withQuery(invalid, {'transactionHashes': validHash}),
+            ),
+            throwsA(
+              isA<NearSdkException>().having(
+                (error) => error.code,
+                'code',
+                NearErrorCode.walletResponseInvalid,
+              ),
+            ),
+          );
+        }
+
+        expect(
+          adapter.handleTransactionCallback(
+            withQuery(callback, {'transactionHashes': validHash}),
+          ),
+          hasLength(1),
+        );
+      },
+    );
+
+    test('replayed transaction cannot consume the next flow', () async {
+      await beginTransactions();
+      final firstCallback = withQuery(launchedCallback('callbackUrl'), {
+        'transactionHashes': validHash,
+      });
+      expect(adapter.handleTransactionCallback(firstCallback), hasLength(1));
+
+      await beginTransactions();
+      final secondHash = base58Encode(List<int>.filled(32, 2));
+      final secondCallback = withQuery(launchedCallback('callbackUrl'), {
+        'transactionHashes': secondHash,
+      });
+
+      expect(
+        () => adapter.handleTransactionCallback(firstCallback),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.walletResponseInvalid,
+          ),
+        ),
+      );
+      expect(
+        adapter
+            .handleTransactionCallback(secondCallback)
+            .single
+            .transactionHash
+            .value,
+        secondHash,
+      );
+    });
+
+    test(
+      'retains fixed query and fragment while allowing wallet fields',
+      () async {
+        const callbackUrl = 'myapp://custom/result?tenant=alpha#screen=wallet';
+        await beginTransactions(callbackUrl: callbackUrl);
+        final callback = launchedCallback('callbackUrl');
+        final correlationKey = callback.queryParameters.keys
+            .where((key) => key != 'tenant')
+            .single;
+        final missingTenant = callback.replace(
+          queryParameters: {
+            correlationKey: callback.queryParameters[correlationKey]!,
+          },
+        );
+        final wrongFragment = callback.replace(fragment: 'screen=other');
+
+        for (final invalid in [missingTenant, wrongFragment]) {
+          expect(
+            () => adapter.handleTransactionCallback(
+              withQuery(invalid, {'transactionHashes': validHash}),
+            ),
+            throwsA(isA<NearSdkException>()),
+          );
+        }
+
+        expect(
+          adapter.handleTransactionCallback(
+            withQuery(callback, {'transactionHashes': validHash}),
+          ),
+          hasLength(1),
+        );
+      },
+    );
+
+    test('does not overwrite a configured correlation-key collision', () async {
+      const callbackUrl =
+          'myapp://custom/result?_nearWalletFlow=configured-value';
+      await beginTransactions(callbackUrl: callbackUrl);
+      final callback = launchedCallback('callbackUrl');
+
+      expect(
+        callback.queryParameters['_nearWalletFlow'] == 'configured-value',
+        isTrue,
+      );
+      expect(callback.queryParameters.length == 2, isTrue);
+      expect(
+        adapter.handleTransactionCallback(
+          withQuery(callback, {'transactionHashes': validHash}),
+        ),
+        hasLength(1),
+      );
+    });
 
     test(
       'rejects a concurrent operation without replacing the first',
@@ -472,7 +811,7 @@ void main() {
               '&signature=invalid-but-present',
             ),
           ),
-          returnsNormally,
+          throwsA(isA<NearSdkException>()),
         );
       },
     );
@@ -500,9 +839,9 @@ void main() {
           await beginTransactions();
           expect(
             () => adapter.handleTransactionCallback(
-              Uri.parse(
-                'myapp://wallet/success?transactionHashes=$invalidHash',
-              ),
+              withQuery(launchedCallback('callbackUrl'), {
+                'transactionHashes': invalidHash,
+              }),
             ),
             throwsA(
               isA<NearSdkException>().having(
@@ -515,9 +854,9 @@ void main() {
         }
 
         await beginTransactions();
-        final callback = Uri.parse(
-          'myapp://wallet/success?transactionHashes=$validHash',
-        );
+        final callback = withQuery(launchedCallback('callbackUrl'), {
+          'transactionHashes': validHash,
+        });
         expect(adapter.handleTransactionCallback(callback), hasLength(1));
         expect(
           () => adapter.handleTransactionCallback(callback),
@@ -543,7 +882,10 @@ void main() {
           failureUrl: 'myapp://wallet/failure',
           network: MyNearWalletNetwork.testnet,
         ),
-        launchUrl: (_) async => true,
+        launchUrl: (uri) async {
+          launchedWalletUrls.add(uri);
+          return true;
+        },
         logger: events.add,
       );
       await expectLater(
@@ -558,10 +900,10 @@ void main() {
       );
 
       final callback = loggingAdapter.handleCallback(
-        Uri.parse(
-          'myapp://wallet/success?errorCode=rejected'
-          '&errorMessage=private-wallet-reason',
-        ),
+        withQuery(launchedCallback('callbackUrl'), {
+          'errorCode': 'rejected',
+          'errorMessage': 'private-wallet-reason',
+        }),
       );
 
       expect(callback.isError, isTrue);
@@ -573,6 +915,33 @@ void main() {
       expect(events.join(), isNot(contains('private-wallet-reason')));
     });
 
+    test('signOut emits one cancelled terminal for a pending flow', () async {
+      final events = <NearLogEvent>[];
+      adapter = MyNearWalletAdapter(
+        config: MyNearWalletConfig(
+          contractId: AccountId('contract.testnet'),
+          successUrl: 'myapp://wallet/success',
+          failureUrl: 'myapp://wallet/failure',
+          network: MyNearWalletNetwork.testnet,
+        ),
+        launchUrl: (uri) async {
+          launchedWalletUrls.add(uri);
+          return true;
+        },
+        logger: events.add,
+      );
+      await beginTransactions();
+
+      await adapter.signOut();
+      await adapter.signOut();
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.walletFlowOpened,
+        NearLogEventType.walletFlowFailed,
+      ]);
+      expect(events.last.metadata['failureCode'], NearErrorCode.cancelled.name);
+    });
+
     test('logs callback receipt without callback values', () async {
       final events = <NearLogEvent>[];
       final loggingAdapter = MyNearWalletAdapter(
@@ -582,7 +951,10 @@ void main() {
           failureUrl: 'myapp://wallet/failure',
           network: MyNearWalletNetwork.testnet,
         ),
-        launchUrl: (_) async => true,
+        launchUrl: (uri) async {
+          launchedWalletUrls.add(uri);
+          return true;
+        },
         logger: events.add,
       );
       await loggingAdapter.signIn(contractId: AccountId('contract.testnet'));
@@ -590,10 +962,10 @@ void main() {
       const callbackSecret = 'callback-secret-value';
 
       final account = await loggingAdapter.completeSignIn(
-        Uri.parse(
-          'myapp://wallet/success?account_id=$callbackSecret'
-          '&public_key=${pending!.publicKey.value}#fragment-secret',
-        ),
+        withQuery(launchedCallback('success_url'), {
+          'account_id': callbackSecret,
+          'public_key': pending!.publicKey.value,
+        }),
       );
 
       expect(account?.accountId.value, callbackSecret);
@@ -645,10 +1017,10 @@ void main() {
       await beginTransactions();
 
       final result = adapter.handleTransactionCallback(
-        Uri.parse(
-          'myapp://wallet/success?errorCode=$callbackCode'
-          '&errorMessage=$callbackMessage',
-        ),
+        withQuery(launchedCallback('callbackUrl'), {
+          'errorCode': callbackCode,
+          'errorMessage': callbackMessage,
+        }),
       );
       final serialized = result.single.outcome.toJson().toString();
 
