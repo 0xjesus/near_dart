@@ -265,6 +265,74 @@ void main() {
       },
     );
 
+    test(
+      'retries an invalid-port primary endpoint with a valid fallback',
+      () async {
+        final events = <NearLogEvent>[];
+        var transportCalls = 0;
+        final client = NearRpcClient(
+          rpcUrl: 'https://primary.example.com:-1/rpc',
+          fallbackUrls: const ['https://fallback.example.com/rpc'],
+          logger: events.add,
+          httpClient: MockClient((request) async {
+            transportCalls++;
+            expect(request.url.host, 'fallback.example.com');
+            return http.Response(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': 'ignored',
+                'result': {'gas_price': '100'},
+              }),
+              200,
+            );
+          }),
+        );
+
+        final result = await client.gasPrice();
+
+        expect(result.isSuccess, isTrue);
+        expect(events.map((event) => event.type), [
+          NearLogEventType.rpcRequestStarted,
+          NearLogEventType.rpcRequestRetried,
+          NearLogEventType.rpcRequestSucceeded,
+        ]);
+        _expectOneTerminalEvent(events);
+        expect(events.first.metadata['endpoint'], 'invalid-endpoint');
+        expect(transportCalls, 1);
+        client.close();
+      },
+    );
+
+    test('keeps an invalid-port final fallback out of transport', () async {
+      final events = <NearLogEvent>[];
+      var transportCalls = 0;
+      final client = NearRpcClient(
+        rpcUrl: 'https://primary.example.com/rpc',
+        fallbackUrls: const ['https://fallback.example.com:99999/rpc'],
+        logger: events.add,
+        httpClient: MockClient((_) async {
+          transportCalls++;
+          return http.Response('offline', 503);
+        }),
+      );
+
+      final result = await client.gasPrice();
+
+      expect(result.isFailure, isTrue);
+      expect(events.map((event) => event.type), [
+        NearLogEventType.rpcRequestStarted,
+        NearLogEventType.rpcRequestRetried,
+        NearLogEventType.rpcRequestFailed,
+      ]);
+      _expectOneTerminalEvent(events);
+      expect(events.last.metadata['endpoint'], 'invalid-endpoint');
+      expect(transportCalls, 1);
+      final error = (result as RpcFailure).error;
+      expect(error.kind, RpcErrorKind.networkError);
+      expect(error.message, 'RPC endpoint is invalid or unsupported.');
+      client.close();
+    });
+
     test('normalizes supported endpoint transport errors', () async {
       const endpoint =
           'https://userinfo-sentinel@transport.example.com/path-sentinel?query-sentinel';

@@ -205,6 +205,52 @@ void main() {
       ]);
     });
 
+    test(
+      'classifies local request encoding failures as invalid input',
+      () async {
+        for (final extra in _nonJsonRelayExtras()) {
+          final events = <NearLogEvent>[];
+          var transportCalls = 0;
+          final client = SolverRelayClient(
+            logger: events.add,
+            httpClient: MockClient((_) async {
+              transportCalls++;
+              return http.Response('{}', 200);
+            }),
+          );
+
+          late Object escaped;
+          try {
+            await client.quote(
+              SolverRelayQuoteRequest(
+                defuseAssetIdentifierIn: 'nep141:wrap.near',
+                defuseAssetIdentifierOut: 'nep141:usdc.near',
+                exactAmountIn: '100',
+                extra: extra,
+              ),
+            );
+          } catch (error) {
+            escaped = error;
+          }
+
+          expect(escaped, isA<SolverRelayException>());
+          final exception = escaped as SolverRelayException;
+          expect(exception.code, NearErrorCode.invalidInput);
+          expect(exception.retryable, isFalse);
+          expect(events.map((event) => event.type), [
+            NearLogEventType.intentsRequestStarted,
+            NearLogEventType.intentsRequestFailed,
+          ]);
+          _expectOneIntentsTerminalEvent(events);
+          expect(transportCalls, 0);
+          expect(
+            [...events, escaped].join(),
+            isNot(contains('request-sentinel')),
+          );
+        }
+      },
+    );
+
     test('supports const relay exceptions without exposing their bodies', () {
       const exception = SolverRelayException(
         'private message',
@@ -403,4 +449,16 @@ void _expectNoTransportEndpointSentinels(Iterable<Object> values) {
     expect(rendered, isNot(contains('userinfo-sentinel')));
     expect(rendered, isNot(contains('query-sentinel')));
   }
+}
+
+Iterable<Map<String, dynamic>> _nonJsonRelayExtras() sync* {
+  yield {'unsupported': _RelayRequestSentinel()};
+  final cyclic = <String, dynamic>{};
+  cyclic['cycle'] = cyclic;
+  yield {'cyclic': cyclic};
+}
+
+class _RelayRequestSentinel {
+  @override
+  String toString() => 'request-sentinel';
 }

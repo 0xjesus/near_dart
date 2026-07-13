@@ -9,7 +9,12 @@ import 'intent_signing.dart';
 import 'one_click_auth.dart';
 import 'one_click_models.dart';
 
-enum _OneClickApiFailureKind { http, invalidEndpoint, transport }
+enum _OneClickApiFailureKind {
+  http,
+  invalidEndpoint,
+  invalidRequest,
+  transport,
+}
 
 /// Exception thrown when the 1Click API returns a non-2xx response.
 class OneClickApiException extends NearSdkException {
@@ -27,6 +32,15 @@ class OneClickApiException extends NearSdkException {
       super(
         code: NearErrorCode.invalidInput,
         message: '1Click API endpoint is invalid or unsupported.',
+      );
+
+  const OneClickApiException.invalidRequest()
+    : statusCode = 0,
+      body = '',
+      _failureKind = _OneClickApiFailureKind.invalidRequest,
+      super(
+        code: NearErrorCode.invalidInput,
+        message: '1Click API request is invalid.',
       );
 
   const OneClickApiException.transport()
@@ -47,6 +61,7 @@ class OneClickApiException extends NearSdkException {
   NearErrorCode get code => switch (_failureKind) {
     _OneClickApiFailureKind.http => _codeForHttpStatus(statusCode),
     _OneClickApiFailureKind.invalidEndpoint => NearErrorCode.invalidInput,
+    _OneClickApiFailureKind.invalidRequest => NearErrorCode.invalidInput,
     _OneClickApiFailureKind.transport => NearErrorCode.rpcUnavailable,
   };
 
@@ -56,6 +71,7 @@ class OneClickApiException extends NearSdkException {
       '1Click API request failed with HTTP $statusCode',
     _OneClickApiFailureKind.invalidEndpoint =>
       '1Click API endpoint is invalid or unsupported.',
+    _OneClickApiFailureKind.invalidRequest => '1Click API request is invalid.',
     _OneClickApiFailureKind.transport => '1Click API transport failed.',
   };
 
@@ -63,6 +79,7 @@ class OneClickApiException extends NearSdkException {
   bool get retryable => switch (_failureKind) {
     _OneClickApiFailureKind.http => _isRetryableHttpStatus(statusCode),
     _OneClickApiFailureKind.invalidEndpoint => false,
+    _OneClickApiFailureKind.invalidRequest => false,
     _OneClickApiFailureKind.transport => true,
   };
 
@@ -244,8 +261,14 @@ class OneClickClient {
       if (!endpoint.isSupported) {
         throw const OneClickApiException.invalidEndpoint();
       }
+      String? encodedBody;
       try {
-        response = await _send(method, endpoint.uri!, body: body);
+        encodedBody = body == null ? null : jsonEncode(body);
+      } catch (_) {
+        throw const OneClickApiException.invalidRequest();
+      }
+      try {
+        response = await _send(method, endpoint.uri!, body: encodedBody);
       } catch (_) {
         throw const OneClickApiException.transport();
       }
@@ -307,22 +330,17 @@ class OneClickClient {
     );
   }
 
-  Future<http.Response> _send(
-    String method,
-    Uri uri, {
-    Map<String, dynamic>? body,
-  }) {
+  Future<http.Response> _send(String method, Uri uri, {String? body}) {
     final headers = {
       'Accept': 'application/json',
       if (body != null) 'Content-Type': 'application/json',
       ...?auth?.headers,
     };
-    final encodedBody = body == null ? null : jsonEncode(body);
     switch (method) {
       case 'GET':
         return _http.get(uri, headers: headers);
       case 'POST':
-        return _http.post(uri, headers: headers, body: encodedBody);
+        return _http.post(uri, headers: headers, body: body);
       default:
         throw ArgumentError.value(method, 'method', 'Unsupported method');
     }

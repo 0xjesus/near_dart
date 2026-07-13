@@ -372,6 +372,45 @@ void main() {
       ]);
     });
 
+    test(
+      'classifies local request encoding failures as invalid input',
+      () async {
+        for (final extra in _nonJsonRequestExtras()) {
+          final events = <NearLogEvent>[];
+          var transportCalls = 0;
+          final client = OneClickClient(
+            logger: events.add,
+            httpClient: MockClient((_) async {
+              transportCalls++;
+              return http.Response('{}', 200);
+            }),
+          );
+
+          late Object escaped;
+          try {
+            await client.quote(_quoteRequest(extra: extra));
+          } catch (error) {
+            escaped = error;
+          }
+
+          expect(escaped, isA<OneClickApiException>());
+          final exception = escaped as OneClickApiException;
+          expect(exception.code, NearErrorCode.invalidInput);
+          expect(exception.retryable, isFalse);
+          expect(events.map((event) => event.type), [
+            NearLogEventType.intentsRequestStarted,
+            NearLogEventType.intentsRequestFailed,
+          ]);
+          _expectOneIntentsTerminalEvent(events);
+          expect(transportCalls, 0);
+          expect(
+            [...events, escaped].join(),
+            isNot(contains('request-sentinel')),
+          );
+        }
+      },
+    );
+
     test('supports const API exceptions without exposing their bodies', () {
       const exception = OneClickApiException(429, 'test-secret');
 
@@ -550,7 +589,7 @@ void _expectNoTransportEndpointSentinels(Iterable<Object> values) {
   }
 }
 
-OneClickQuoteRequest _quoteRequest() {
+OneClickQuoteRequest _quoteRequest({Map<String, dynamic> extra = const {}}) {
   return OneClickQuoteRequest(
     dry: true,
     swapType: OneClickSwapType.exactInput,
@@ -564,5 +603,18 @@ OneClickQuoteRequest _quoteRequest() {
     recipient: 'bob.near',
     recipientType: OneClickRecipientType.intents,
     deadline: DateTime.utc(2026, 7, 6, 12, 5),
+    extra: extra,
   );
+}
+
+Iterable<Map<String, dynamic>> _nonJsonRequestExtras() sync* {
+  yield {'unsupported': _RequestSentinel()};
+  final cyclic = <String, dynamic>{};
+  cyclic['cycle'] = cyclic;
+  yield {'cyclic': cyclic};
+}
+
+class _RequestSentinel {
+  @override
+  String toString() => 'request-sentinel';
 }

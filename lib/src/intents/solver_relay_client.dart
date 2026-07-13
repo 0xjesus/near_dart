@@ -29,6 +29,17 @@ class SolverRelayException extends NearSdkException {
         message: 'Solver relay endpoint is invalid or unsupported.',
       );
 
+  const SolverRelayException.invalidRequest()
+    : _message = 'Solver relay request is invalid.',
+      statusCode = null,
+      body = null,
+      _codeOverride = NearErrorCode.invalidInput,
+      _retryableOverride = false,
+      super(
+        code: NearErrorCode.invalidInput,
+        message: 'Solver relay request is invalid.',
+      );
+
   const SolverRelayException.transport()
     : _message = 'Solver relay transport failed.',
       statusCode = null,
@@ -139,6 +150,17 @@ class SolverRelayClient {
       if (!validatedEndpoint.isSupported) {
         throw const SolverRelayException.invalidEndpoint();
       }
+      late final String body;
+      try {
+        body = jsonEncode({
+          'jsonrpc': '2.0',
+          'id': id,
+          'method': method,
+          'params': params,
+        });
+      } catch (_) {
+        throw const SolverRelayException.invalidRequest();
+      }
       try {
         response = await _http.post(
           validatedEndpoint.uri!,
@@ -147,12 +169,7 @@ class SolverRelayClient {
             'Content-Type': 'application/json',
             ...?auth?.headers,
           },
-          body: jsonEncode({
-            'jsonrpc': '2.0',
-            'id': id,
-            'method': method,
-            'params': params,
-          }),
+          body: body,
         );
       } catch (_) {
         throw const SolverRelayException.transport();

@@ -1,4 +1,6 @@
 const String invalidDiagnosticEndpointOrigin = 'invalid-endpoint';
+const int _minimumHttpTransportPort = 0;
+const int _maximumHttpTransportPort = 65535;
 
 /// The result of validating an endpoint for HTTP transport.
 class SupportedHttpEndpointValidation {
@@ -23,6 +25,14 @@ SupportedHttpEndpointValidation validateSupportedHttpEndpoint(
 
     final scheme = uri.scheme.toLowerCase();
     if ((scheme != 'http' && scheme != 'https') || uri.host.isEmpty) {
+      return const SupportedHttpEndpointValidation.unsupported();
+    }
+
+    // Dart's HTTP transports accept the inclusive TCP port range. Port zero
+    // is transport-valid even though a connection to it may fail normally.
+    if (uri.hasPort &&
+        (uri.port < _minimumHttpTransportPort ||
+            uri.port > _maximumHttpTransportPort)) {
       return const SupportedHttpEndpointValidation.unsupported();
     }
 
