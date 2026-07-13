@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:meta/meta.dart';
 
+import '../diagnostics/near_errors.dart';
 import 'json_rpc.dart';
 
 /// Represents the result of an RPC call.
@@ -226,6 +227,24 @@ class RpcError extends Equatable {
 
   @override
   String toString() => 'RpcError($kind: $message)';
+}
+
+/// Adds stable SDK error classification to RPC failures.
+extension RpcErrorNearErrorCode on RpcError {
+  /// Returns the stable SDK error code corresponding to this RPC error.
+  NearErrorCode get nearErrorCode {
+    return switch (kind) {
+      RpcErrorKind.timeout => NearErrorCode.rpcTimeout,
+      RpcErrorKind.networkError => NearErrorCode.rpcUnavailable,
+      RpcErrorKind.httpError when code == 429 => NearErrorCode.rateLimited,
+      RpcErrorKind.httpError => NearErrorCode.rpcUnavailable,
+      RpcErrorKind.parseError => NearErrorCode.invalidResponse,
+      RpcErrorKind.cancelled => NearErrorCode.cancelled,
+      RpcErrorKind.rpcError ||
+      RpcErrorKind.runtimeError ||
+      RpcErrorKind.unknown => nearErrorFrom(message).code,
+    };
+  }
 }
 
 /// Exception thrown when accessing the value of a failed RPC result.

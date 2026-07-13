@@ -43,6 +43,10 @@
 /// ```
 library near_dart;
 
+// Diagnostics
+export 'src/diagnostics/near_diagnostics.dart';
+export 'src/diagnostics/near_errors.dart';
+
 // Types
 export 'src/types/primitives.dart';
 export 'src/types/block_reference.dart';
