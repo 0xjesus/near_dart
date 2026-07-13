@@ -24,6 +24,9 @@ bool isStrictEd25519Point(List<int> encoding) {
 /// Returns whether [scalar] is the canonical Ed25519 scalar encoding.
 bool isCanonicalEd25519Scalar(List<int> scalar) {
   if (scalar.length != 32) return false;
+  for (final byte in scalar) {
+    if (byte < 0 || byte > 0xff) return false;
+  }
   return _decodeLittleEndian(scalar) < _groupOrder;
 }
 

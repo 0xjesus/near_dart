@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:near_dart/near_dart.dart';
 import 'package:test/test.dart';
+import 'package:near_dart/src/crypto/strict_ed25519.dart';
 
 final BigInt _ed25519Order =
     (BigInt.one << 252) +
@@ -18,7 +19,7 @@ final Map<String, List<int>> _rejectedPoints = {
   ),
   'other order-8 point': _hex(
     'c7176a703d4dd84fba3c0b760d10670f'
-    '2a2053fa2c39ccc64ce5213b4c0f037a',
+    '2a2053fa2c39ccc64ec7fd7792ac037a',
   ),
   'noncanonical y': [0xed, ...List<int>.filled(30, 0xff), 0x7f],
   'noncanonical identity': [1, ...List<int>.filled(30, 0), 0x80],
@@ -29,6 +30,21 @@ final Map<String, List<int>> _rejectedPoints = {
 };
 
 void main() {
+  group('strict Ed25519 scalar encodings', () {
+    for (final vector in {
+      'negative byte': -1,
+      'above byte': 300,
+      'byte that truncates to zero': 256,
+    }.entries) {
+      test('rejects ${vector.key}', () {
+        final scalar = List<int>.filled(32, 0);
+        scalar[0] = vector.value;
+
+        expect(isCanonicalEd25519Scalar(scalar), isFalse);
+      });
+    }
+  });
+
   group('strict Ed25519 public keys', () {
     for (final vector in _rejectedPoints.entries) {
       test('PublicKey rejects ${vector.key}', () {
@@ -157,6 +173,27 @@ void main() {
           isFalse,
         );
       });
+    }
+
+    for (final index in [0, 32]) {
+      for (final value in [-1, 256]) {
+        test(
+          'returns false without throwing for byte $value at index $index',
+          () async {
+            final malformedSignature = [...validSignature];
+            malformedSignature[index] = value;
+
+            expect(
+              await verifySignature(
+                message: const [],
+                signature: malformedSignature,
+                publicKey: publicKey,
+              ),
+              isFalse,
+            );
+          },
+        );
+      }
     }
   });
 }
