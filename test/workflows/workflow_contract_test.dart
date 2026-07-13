@@ -41,4 +41,18 @@ void main() {
       ]),
     );
   });
+
+  test('root release check runs non-integration tests', () {
+    final jobs =
+        workflow('.github/workflows/release-check.yml')['jobs'] as YamlMap;
+    final nearDart = jobs['near-dart'] as YamlMap;
+    final steps = nearDart['steps'] as YamlList;
+
+    expect(
+      steps.whereType<YamlMap>().any(
+        (step) => step['run'] == 'dart test --exclude-tags integration',
+      ),
+      isTrue,
+    );
+  });
 }

@@ -22,6 +22,7 @@ jobs:
           sdk: stable
       - run: dart pub get --no-example
       - run: dart analyze --fatal-infos lib test
+      - run: dart test --exclude-tags integration
       - run: dart pub publish --dry-run
   near-jsonrpc-client:
     runs-on: ubuntu-latest
