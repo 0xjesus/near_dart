@@ -445,7 +445,54 @@ void main() {
         );
       },
     );
+
+    test('keeps custom-scheme endpoint failures private', () async {
+      const endpoint =
+          'custom://userinfo-sentinel@example.com/path-sentinel?query-sentinel';
+      final events = <NearLogEvent>[];
+      final client = OneClickClient(
+        baseUri: Uri.parse(endpoint),
+        logger: events.add,
+        httpClient: MockClient((_) async => http.Response('offline', 503)),
+      );
+
+      late Object escaped;
+      try {
+        await client.tokens();
+      } catch (error) {
+        escaped = error;
+      }
+
+      expect(escaped, isA<OneClickApiException>());
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.intentsRequestStarted,
+        NearLogEventType.intentsRequestFailed,
+      ]);
+      _expectOneIntentsTerminalEvent(events);
+      _expectNoCustomEndpointSentinels([...events, escaped]);
+    });
   });
+}
+
+void _expectOneIntentsTerminalEvent(List<NearLogEvent> events) {
+  expect(
+    events.where(
+      (event) =>
+          event.type == NearLogEventType.intentsRequestSucceeded ||
+          event.type == NearLogEventType.intentsRequestFailed,
+    ),
+    hasLength(1),
+  );
+}
+
+void _expectNoCustomEndpointSentinels(Iterable<Object> values) {
+  for (final value in values) {
+    final rendered = value.toString();
+    expect(rendered, isNot(contains('userinfo-sentinel')));
+    expect(rendered, isNot(contains('path-sentinel')));
+    expect(rendered, isNot(contains('query-sentinel')));
+  }
 }
 
 OneClickQuoteRequest _quoteRequest() {

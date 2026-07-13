@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../diagnostics/diagnostic_endpoint_sanitizer.dart';
 import '../diagnostics/near_diagnostics.dart';
 import '../diagnostics/near_errors.dart';
 import 'one_click_auth.dart';
@@ -348,6 +349,8 @@ class OneClickExplorerClient {
     required Stopwatch stopwatch,
     int? statusCode,
   }) {
+    final endpoint = sanitizeDiagnosticEndpointOrigin(uri);
+    final endpointPath = sanitizeDiagnosticEndpointPath(uri);
     emitNearLog(
       logger,
       NearLogEvent(
@@ -358,10 +361,10 @@ class OneClickExplorerClient {
         type: type,
         operation: operation,
         metadata: {
-          'endpoint': uri.origin,
+          'endpoint': endpoint,
           'method': method,
           'operation': operation,
-          'path': uri.path,
+          if (endpointPath != null) 'path': endpointPath,
           if (statusCode != null) 'statusCode': statusCode,
           'durationMs': stopwatch.elapsedMilliseconds,
         },

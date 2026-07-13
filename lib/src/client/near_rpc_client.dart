@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 import 'package:near_dart/near_dart.dart';
 
+import '../diagnostics/diagnostic_endpoint_sanitizer.dart';
+
 /// How long the RPC node should wait before returning a transaction result.
 ///
 /// See https://docs.near.org/api/rpc/transactions for the semantics of
@@ -53,8 +55,6 @@ enum TxExecutionStatus {
 /// );
 /// ```
 class NearRpcClient {
-  static const _invalidEndpointOrigin = 'invalid-endpoint';
-
   /// Creates a client with a custom RPC URL.
   ///
   /// When [fallbackUrls] is non-empty, requests that fail at the
@@ -355,7 +355,7 @@ class NearRpcClient {
         type: type,
         operation: method,
         metadata: {
-          'endpoint': _endpointOrigin(url),
+          'endpoint': sanitizeDiagnosticEndpointOrigin(url),
           'attempt': attempt,
           'endpointCount': endpointCount,
           if (statusCode != null) 'statusCode': statusCode,
@@ -363,16 +363,6 @@ class NearRpcClient {
         },
       ),
     );
-  }
-
-  String _endpointOrigin(String url) {
-    try {
-      final uri = Uri.parse(url);
-      if (!uri.hasScheme || uri.host.isEmpty) return _invalidEndpointOrigin;
-      return uri.origin;
-    } on FormatException {
-      return _invalidEndpointOrigin;
-    }
   }
 
   /// Returns the status of the connected RPC node.

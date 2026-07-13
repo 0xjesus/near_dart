@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../diagnostics/diagnostic_endpoint_sanitizer.dart';
 import '../diagnostics/near_diagnostics.dart';
 import '../diagnostics/near_errors.dart';
 import 'one_click_auth.dart';
@@ -160,6 +161,8 @@ class SolverRelayClient {
     required Stopwatch stopwatch,
     int? statusCode,
   }) {
+    final safeEndpoint = sanitizeDiagnosticEndpointOrigin(endpoint);
+    final endpointPath = sanitizeDiagnosticEndpointPath(endpoint);
     emitNearLog(
       logger,
       NearLogEvent(
@@ -170,10 +173,10 @@ class SolverRelayClient {
         type: type,
         operation: operation,
         metadata: {
-          'endpoint': endpoint.origin,
+          'endpoint': safeEndpoint,
           'method': 'POST',
           'operation': operation,
-          'path': endpoint.path,
+          if (endpointPath != null) 'path': endpointPath,
           if (statusCode != null) 'statusCode': statusCode,
           'durationMs': stopwatch.elapsedMilliseconds,
         },

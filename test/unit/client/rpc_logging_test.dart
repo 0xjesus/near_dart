@@ -185,5 +185,114 @@ void main() {
         client.close();
       },
     );
+
+    test(
+      'keeps custom-scheme primary diagnostics private without a logger',
+      () async {
+        const endpoint =
+            'custom://userinfo-sentinel@example.com/path-sentinel?query-sentinel';
+        final events = <NearLogEvent>[];
+        final client = NearRpcClient(
+          rpcUrl: endpoint,
+          logger: events.add,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': 'ignored',
+                'result': {'gas_price': '100'},
+              }),
+              200,
+            ),
+          ),
+        );
+
+        final result = await client.gasPrice();
+
+        expect(result.isSuccess, isTrue);
+        expect(events.map((event) => event.type), [
+          NearLogEventType.rpcRequestStarted,
+          NearLogEventType.rpcRequestSucceeded,
+        ]);
+        _expectOneTerminalEvent(events);
+        _expectNoEndpointSentinels([...events, result]);
+        client.close();
+
+        final loggerlessClient = NearRpcClient(
+          rpcUrl: endpoint,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': 'ignored',
+                'result': {'gas_price': '100'},
+              }),
+              200,
+            ),
+          ),
+        );
+
+        expect((await loggerlessClient.gasPrice()).isSuccess, isTrue);
+        loggerlessClient.close();
+      },
+    );
+
+    test(
+      'keeps custom-scheme final fallback failures inside diagnostics',
+      () async {
+        const endpoint =
+            'custom://userinfo-sentinel@example.com/path-sentinel?query-sentinel';
+        final events = <NearLogEvent>[];
+        final client = NearRpcClient(
+          rpcUrl: 'https://primary.example.com/rpc',
+          fallbackUrls: const [endpoint],
+          logger: events.add,
+          httpClient: MockClient((_) async => http.Response('offline', 503)),
+        );
+
+        final result = await client.gasPrice();
+
+        expect(result.isFailure, isTrue);
+        expect(events.map((event) => event.type), [
+          NearLogEventType.rpcRequestStarted,
+          NearLogEventType.rpcRequestRetried,
+          NearLogEventType.rpcRequestFailed,
+        ]);
+        _expectOneTerminalEvent(events);
+        _expectNoEndpointSentinels([...events, result]);
+        expect(
+          result.getOrThrow,
+          throwsA(predicate<Object>(_doesNotContainEndpointSentinel)),
+        );
+        client.close();
+      },
+    );
   });
+}
+
+void _expectOneTerminalEvent(List<NearLogEvent> events) {
+  expect(
+    events.where(
+      (event) =>
+          event.type == NearLogEventType.rpcRequestSucceeded ||
+          event.type == NearLogEventType.rpcRequestFailed,
+    ),
+    hasLength(1),
+  );
+}
+
+void _expectNoEndpointSentinels(Iterable<Object> values) {
+  for (final value in values) {
+    expect(_containsEndpointSentinel(value.toString()), isFalse);
+  }
+}
+
+bool _containsEndpointSentinel(String value) {
+  return value.contains('userinfo-sentinel') ||
+      value.contains('path-sentinel') ||
+      value.contains('query-sentinel');
+}
+
+bool _doesNotContainEndpointSentinel(Object error) {
+  return !_containsEndpointSentinel(error.toString());
 }
