@@ -9,6 +9,8 @@ const List<String> _sensitiveKeyFragments = <String>[
   'payload',
   'body',
   'signedtx',
+  'signedtransaction',
+  'messagebody',
   'nonce',
 ];
 

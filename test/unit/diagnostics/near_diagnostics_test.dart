@@ -40,6 +40,40 @@ void main() {
     }
   });
 
+  test(
+    'redacts canonical signed transactions and message bodies nested in lists',
+    () {
+      const signedTransactionSnakeCase = 'signed transaction snake sentinel';
+      const signedTransactionCamelCase = 'signed transaction camel sentinel';
+      const nep413MessageBody = 'NEP-413 message body sentinel';
+      final event = NearLogEvent(
+        level: NearLogLevel.info,
+        type: NearLogEventType.rpcRequestStarted,
+        operation: 'query',
+        metadata: {
+          'events': [
+            {
+              'signed_transaction': signedTransactionSnakeCase,
+              'signedTransaction': signedTransactionCamelCase,
+              'messageBody': nep413MessageBody,
+            },
+          ],
+        },
+      );
+
+      for (final value in <String>[
+        signedTransactionSnakeCase,
+        signedTransactionCamelCase,
+        nep413MessageBody,
+      ]) {
+        expect(event.metadata.toString(), isNot(contains(value)));
+        expect(event.toString(), isNot(contains(value)));
+      }
+      expect(event.metadata.toString(), contains('<redacted>'));
+      expect(event.toString(), contains('<redacted>'));
+    },
+  );
+
   test('deeply copies and freezes nested metadata collections', () {
     final nested = <String, Object?>{
       'attempt': 2,
