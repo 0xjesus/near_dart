@@ -169,6 +169,10 @@ bool _isSensitiveKey(String key) {
 bool _isSignedTransactionKey(String key) {
   final boundaryNormalized = key
       .replaceAllMapped(
+        RegExp(r'([A-Z]+)([A-Z][a-z])'),
+        (match) => '${match[1]}_${match[2]}',
+      )
+      .replaceAllMapped(
         RegExp(r'([a-z0-9])([A-Z])'),
         (match) => '${match[1]}_${match[2]}',
       )

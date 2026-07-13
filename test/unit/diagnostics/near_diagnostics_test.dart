@@ -108,6 +108,42 @@ void main() {
     expect(event.metadata['errorMessage'], errorMessage);
   });
 
+  test('redacts acronym-cased signed transactions nested in metadata', () {
+    const walletSignedTxHash = 'wallet signed TX hash sentinel';
+    const rpcSignedTransactionHash = 'RPC signed transaction hash sentinel';
+    final event = NearLogEvent(
+      level: NearLogLevel.info,
+      type: NearLogEventType.rpcRequestStarted,
+      operation: 'query',
+      metadata: {
+        'responses': [
+          {
+            'walletSignedTXHash': walletSignedTxHash,
+            'nested': [
+              {'RPCSignedTransactionHash': rpcSignedTransactionHash},
+            ],
+            'unsignedTransactionCount': 2,
+            'unsignedTxCount': 3,
+          },
+        ],
+      },
+    );
+
+    for (final value in <String>[
+      walletSignedTxHash,
+      rpcSignedTransactionHash,
+    ]) {
+      expect(event.metadata.toString(), isNot(contains(value)));
+      expect(event.toString(), isNot(contains(value)));
+    }
+
+    final response =
+        (event.metadata['responses'] as List<Object?>).single
+            as Map<Object?, Object?>;
+    expect(response['unsignedTransactionCount'], 2);
+    expect(response['unsignedTxCount'], 3);
+  });
+
   test('deeply copies and freezes nested metadata collections', () {
     final nested = <String, Object?>{
       'attempt': 2,
