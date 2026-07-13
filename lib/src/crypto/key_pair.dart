@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 
 import '../encoding/base58.dart';
 import '../types/primitives.dart';
+import 'strict_ed25519.dart';
 
 /// An ed25519 key pair capable of signing NEAR transactions and messages.
 ///
@@ -123,12 +124,26 @@ Future<bool> verifySignature({
       'Only ed25519 signature verification is supported',
     );
   }
-  final publicKeyBytes = base58Decode(publicKey.keyData);
-  return c.Ed25519().verify(
-    message,
-    signature: c.Signature(
-      signature,
-      publicKey: c.SimplePublicKey(publicKeyBytes, type: c.KeyPairType.ed25519),
-    ),
-  );
+  try {
+    final publicKeyBytes = base58Decode(publicKey.keyData);
+    if (!isStrictEd25519Point(publicKeyBytes) || signature.length != 64) {
+      return false;
+    }
+    if (!isStrictEd25519Point(signature.sublist(0, 32)) ||
+        !isCanonicalEd25519Scalar(signature.sublist(32))) {
+      return false;
+    }
+    return c.Ed25519().verify(
+      message,
+      signature: c.Signature(
+        signature,
+        publicKey: c.SimplePublicKey(
+          publicKeyBytes,
+          type: c.KeyPairType.ed25519,
+        ),
+      ),
+    );
+  } catch (_) {
+    return false;
+  }
 }

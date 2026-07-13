@@ -6,6 +6,8 @@
 @Tags(['platform', 'web'])
 library;
 
+import 'dart:convert';
+
 import 'package:test/test.dart';
 import 'package:near_dart/near_dart.dart';
 
@@ -58,6 +60,57 @@ void main() {
         'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
       );
       expect(key.keyType, equals(KeyType.ed25519));
+    });
+  });
+
+  group('Web Platform: Strict Ed25519', () {
+    final publicKey = PublicKey(
+      'ed25519:${base58Encode(_hex('d75a980182b10ab7d54bfed3c964073a'
+      '0ee172f3daa62325af021a68f707511a'))}',
+    );
+    final validSignature = _hex(
+      'e5564300c360ac729086e2cc806e828a'
+      '84877f1eb8e5d974d873e06522490155'
+      '5fb8821590a33bacc61e39701cf9b46b'
+      'd25bf5f0595bbe24655141438e7a100b',
+    );
+
+    test('verifies RFC 8032 test vector 1', () async {
+      expect(
+        await verifySignature(
+          message: const [],
+          signature: validSignature,
+          publicKey: publicKey,
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects identity and zero public keys', () {
+      final identity = [1, ...List<int>.filled(31, 0)];
+      final zero = List<int>.filled(32, 0);
+
+      expect(
+        () => PublicKey('ed25519:${base58Encode(identity)}'),
+        throwsArgumentError,
+      );
+      expect(
+        () => PublicKey('ed25519:${base58Encode(zero)}'),
+        throwsArgumentError,
+      );
+    });
+
+    test('returns false for identity R with S = 0', () async {
+      final identity = [1, ...List<int>.filled(31, 0)];
+
+      expect(
+        await verifySignature(
+          message: utf8.encode('browser strict verification'),
+          signature: [...identity, ...List<int>.filled(32, 0)],
+          publicKey: publicKey,
+        ),
+        isFalse,
+      );
     });
   });
 
@@ -163,3 +216,8 @@ void main() {
     });
   });
 }
+
+List<int> _hex(String value) => [
+  for (var i = 0; i < value.length; i += 2)
+    int.parse(value.substring(i, i + 2), radix: 16),
+];

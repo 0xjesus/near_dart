@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:equatable/equatable.dart';
 import 'package:meta/meta.dart';
 
+import '../crypto/strict_ed25519.dart';
 import '../encoding/base58.dart';
 
 /// Represents a NEAR Protocol cryptographic hash (32 bytes, base58 encoded).
@@ -295,6 +296,14 @@ class PublicKey extends Equatable {
         'value',
         'Decoded ${type.name} public key must be $expectedLength bytes, '
             'got ${bytes.length}',
+      );
+    }
+    if (type == KeyType.ed25519 && !isStrictEd25519Point(bytes)) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Ed25519 public key must be a canonical, non-identity point in the '
+            'prime-order subgroup',
       );
     }
     return type;

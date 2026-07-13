@@ -38,7 +38,7 @@ void main() {
       final account = WalletAccount(
         accountId: AccountId('bob.testnet'),
         publicKey: PublicKey(
-          'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
         ),
       );
 
@@ -47,7 +47,7 @@ void main() {
       expect(json['accountId'], equals('bob.testnet'));
       expect(
         json['publicKey'],
-        equals('ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw'),
+        equals('ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj'),
       );
     });
 

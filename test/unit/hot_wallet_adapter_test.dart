@@ -159,6 +159,27 @@ void main() {
     },
   );
 
+  test('signIn rejects an explicit zero public key', () async {
+    relay.respond = (_) => {
+      'success': true,
+      'payload': {
+        'accountId': 'alice.near',
+        'publicKey': 'ed25519:11111111111111111111111111111111',
+      },
+    };
+
+    await expectLater(
+      adapter().signIn(),
+      throwsA(
+        isA<NearSdkException>().having(
+          (error) => error.code,
+          'code',
+          NearErrorCode.walletResponseInvalid,
+        ),
+      ),
+    );
+  });
+
   test('signMessage sends NEP-413 params and verifies the signature', () async {
     final walletKey = await KeyPairEd25519.generate();
     final payload = Nep413Payload(

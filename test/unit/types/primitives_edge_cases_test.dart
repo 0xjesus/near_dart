@@ -310,7 +310,7 @@ void main() {
           'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
         );
         final k2 = PublicKey(
-          'ed25519:4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw',
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
         );
         expect(k1, isNot(equals(k2)));
       });
