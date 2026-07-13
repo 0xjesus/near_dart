@@ -5,6 +5,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../borsh/transaction_serializer.dart' show sha256Hash;
 import '../../crypto/key_pair.dart';
+import '../../diagnostics/near_diagnostics.dart';
+import '../../diagnostics/near_errors.dart';
 import '../../encoding/base58.dart';
 import '../../types/primitives.dart';
 import '../key_store.dart';
@@ -89,6 +91,7 @@ class IntearWalletAdapter {
     required this.keyStore,
     required this.launchUrl,
     WebSocketChannel Function(Uri)? connectWebSocket,
+    this.logger,
   }) : _connect = connectWebSocket ?? WebSocketChannel.connect;
 
   final IntearWalletConfig config;
@@ -99,6 +102,9 @@ class IntearWalletAdapter {
   /// Opens the `intear://` deep link (e.g. url_launcher's `launchUrl`).
   final Future<bool> Function(Uri uri) launchUrl;
 
+  /// Receives safe operational diagnostics for wallet flows.
+  final NearLogger? logger;
+
   final WebSocketChannel Function(Uri) _connect;
 
   /// Connects to the wallet. Optionally signs a NEP-413 [messageToSign]
@@ -106,7 +112,7 @@ class IntearWalletAdapter {
   Future<IntearConnectionResult> signIn({
     Nep413Payload? messageToSign,
     String? state,
-  }) async {
+  }) => _runWalletFlow('signIn', () async {
     final appKey = await KeyPairEd25519.generate();
 
     // V2 connect message: `origin` is required by the wallet;
@@ -140,39 +146,38 @@ class IntearWalletAdapter {
       data: data,
       successType: 'connected',
     );
-
-    final accounts = (response['accounts'] ?? const []) as List<dynamic>;
-    if (accounts.isEmpty) {
-      throw StateError('Intear Wallet returned no accounts');
+    final accountId = _connectedAccount(response);
+    final signed = messageToSign == null
+        ? null
+        : await _verifiedSignedMessage(
+            response['signedMessage'],
+            payload: messageToSign,
+            expectedAccountId: accountId,
+            required: true,
+          );
+    final functionCallKeyAdded = response['functionCallKeyAdded'] ?? false;
+    final walletUrl = response['walletUrl'] ?? 'https://wallet.intear.tech';
+    if (functionCallKeyAdded is! bool ||
+        walletUrl is! String ||
+        walletUrl.isEmpty) {
+      throw const IntearWalletException.invalidResponse();
     }
-    final accountId = AccountId((accounts.first as Map)['accountId'] as String);
+
     await keyStore.setKey(accountId, appKey);
-
-    Nep413SignedMessage? signed;
-    final sm = response['signedMessage'];
-    if (sm is Map) {
-      signed = Nep413SignedMessage(
-        accountId: AccountId(sm['accountId'] as String),
-        publicKey: PublicKey(sm['publicKey'] as String),
-        signature: sm['signature'] as String,
-      );
-    }
-
     return IntearConnectionResult(
       account: WalletAccount(accountId: accountId, publicKey: appKey.publicKey),
-      functionCallKeyAdded: (response['functionCallKeyAdded'] ?? false) as bool,
-      walletUrl:
-          (response['walletUrl'] ?? 'https://wallet.intear.tech') as String,
+      functionCallKeyAdded: functionCallKeyAdded,
+      walletUrl: walletUrl,
       signedMessage: signed,
     );
-  }
+  });
 
   /// Signs a NEP-413 message with the user's wallet (full-access key).
   Future<Nep413SignedMessage> signMessage({
     required AccountId accountId,
     required Nep413Payload payload,
     String? state,
-  }) async {
+  }) => _runWalletFlow('signMessage', () async {
     final appKey = await _appKeyFor(accountId);
     final message = _nep413Json(payload, state);
     final nonce = DateTime.now().millisecondsSinceEpoch;
@@ -190,12 +195,109 @@ class IntearWalletAdapter {
       successType: 'signed',
     );
 
-    final sig = response['signature'] as Map;
-    return Nep413SignedMessage(
-      accountId: AccountId(sig['accountId'] as String),
-      publicKey: PublicKey(sig['publicKey'] as String),
-      signature: sig['signature'] as String,
+    return (await _verifiedSignedMessage(
+      response['signature'],
+      payload: payload,
+      expectedAccountId: accountId,
+      required: true,
+    ))!;
+  });
+
+  AccountId _connectedAccount(Map<String, dynamic> response) {
+    try {
+      final accounts = response['accounts'];
+      if (accounts is! List || accounts.isEmpty || accounts.first is! Map) {
+        throw const FormatException();
+      }
+      final value = (accounts.first as Map)['accountId'];
+      if (value is! String || value.isEmpty) {
+        throw const FormatException();
+      }
+      return AccountId(value);
+    } catch (_) {
+      throw const IntearWalletException.invalidResponse();
+    }
+  }
+
+  Future<Nep413SignedMessage?> _verifiedSignedMessage(
+    Object? value, {
+    required Nep413Payload? payload,
+    required AccountId expectedAccountId,
+    required bool required,
+  }) async {
+    if (value == null && !required) return null;
+    if (value is! Map || payload == null) {
+      throw const IntearWalletException.invalidResponse();
+    }
+
+    late final Nep413SignedMessage signed;
+    try {
+      final accountId = value['accountId'];
+      final publicKey = value['publicKey'];
+      final signature = value['signature'];
+      if (accountId is! String ||
+          accountId.isEmpty ||
+          publicKey is! String ||
+          publicKey.isEmpty ||
+          signature is! String ||
+          signature.isEmpty) {
+        throw const FormatException();
+      }
+      signed = Nep413SignedMessage(
+        accountId: AccountId(accountId),
+        publicKey: PublicKey(publicKey),
+        signature: signature,
+      );
+    } catch (_) {
+      throw const IntearWalletException.invalidResponse();
+    }
+
+    if (signed.accountId != expectedAccountId) {
+      throw const IntearWalletException.accountMismatch();
+    }
+    try {
+      if (!await verifyNep413Signature(payload: payload, signed: signed)) {
+        throw const IntearWalletException.signatureVerification();
+      }
+    } on IntearWalletException {
+      rethrow;
+    } catch (_) {
+      throw const IntearWalletException.signatureVerification();
+    }
+    return signed;
+  }
+
+  Future<T> _runWalletFlow<T>(
+    String operation,
+    Future<T> Function() action,
+  ) async {
+    final stopwatch = Stopwatch()..start();
+    _emitWalletEvent(
+      NearLogEventType.walletFlowOpened,
+      operation: operation,
+      stopwatch: stopwatch,
+      outcome: 'opened',
     );
+    try {
+      final result = await action();
+      _emitWalletEvent(
+        NearLogEventType.walletCallbackReceived,
+        operation: operation,
+        stopwatch: stopwatch,
+        outcome: 'success',
+      );
+      return result;
+    } catch (error, stackTrace) {
+      final normalized = _normalizeIntearError(error);
+      _emitWalletEvent(
+        NearLogEventType.walletCallbackReceived,
+        operation: operation,
+        stopwatch: stopwatch,
+        outcome: 'failure',
+        failureCode: normalized.code,
+      );
+      Error.throwWithStackTrace(normalized, stackTrace);
+    }
   }
 
   /// Signs and sends transactions through the wallet.
@@ -206,7 +308,7 @@ class IntearWalletAdapter {
   Future<List<dynamic>> signAndSendTransactions({
     required AccountId accountId,
     required List<Map<String, dynamic>> transactions,
-  }) async {
+  }) => _runWalletFlow('signAndSendTransactions', () async {
     final appKey = await _appKeyFor(accountId);
     final txJson = jsonEncode(transactions);
     final nonce = DateTime.now().millisecondsSinceEpoch;
@@ -225,8 +327,12 @@ class IntearWalletAdapter {
       successType: 'sent',
     );
 
-    return (response['outcomes'] ?? const []) as List<dynamic>;
-  }
+    final outcomes = response['outcomes'] ?? const <dynamic>[];
+    if (outcomes is! List) {
+      throw const IntearWalletException.invalidResponse();
+    }
+    return outcomes;
+  });
 
   /// Forgets the stored session key for [accountId].
   Future<void> signOut(AccountId accountId) => keyStore.removeKey(accountId);
@@ -236,9 +342,7 @@ class IntearWalletAdapter {
   Future<KeyPairEd25519> _appKeyFor(AccountId accountId) async {
     final key = await keyStore.getKey(accountId);
     if (key == null) {
-      throw StateError(
-        'No Intear session for ${accountId.value} — call signIn() first.',
-      );
+      throw const IntearWalletNotConnectedException();
     }
     return key;
   }
@@ -271,55 +375,201 @@ class IntearWalletAdapter {
     required Map<String, dynamic> data,
     required String successType,
   }) async {
-    final channel = _connect(
-      Uri.parse('${config.bridgeUrl}/api/session/create'),
-    );
+    WebSocketChannel? channel;
     try {
+      channel = _connect(Uri.parse('${config.bridgeUrl}/api/session/create'));
       final messages = StreamIterator(channel.stream);
 
       if (!await messages.moveNext().timeout(const Duration(seconds: 30))) {
-        throw StateError('Intear bridge closed before issuing a session');
+        throw const IntearWalletException.transport();
       }
-      final session =
-          jsonDecode(messages.current as String) as Map<String, dynamic>;
-      final sessionId = session['session_id'] as String?;
-      if (sessionId == null) {
-        throw StateError('Intear bridge did not return a session_id');
+      late final Map<String, dynamic> session;
+      try {
+        final current = messages.current;
+        if (current is! String) throw const FormatException();
+        session = (jsonDecode(current) as Map).cast<String, dynamic>();
+      } catch (_) {
+        throw const IntearWalletException.invalidResponse();
+      }
+      final sessionId = session['session_id'];
+      if (sessionId is! String || sessionId.isEmpty) {
+        throw const IntearWalletException.invalidResponse();
       }
       channel.sink.add(jsonEncode({'type': type, 'data': data}));
 
-      final launched = await launchUrl(
-        Uri.parse('intear://$method?session_id=$sessionId'),
-      );
+      late final bool launched;
+      try {
+        launched = await launchUrl(
+          Uri.parse('intear://$method?session_id=$sessionId'),
+        );
+      } catch (_) {
+        throw const IntearWalletException.deepLink();
+      }
       if (!launched) {
-        throw StateError('Could not open the Intear Wallet app');
+        throw const IntearWalletException.deepLink();
       }
 
       if (!await messages.moveNext().timeout(config.responseTimeout)) {
-        throw StateError('Intear bridge closed without a wallet response');
+        throw const IntearWalletException.transport();
       }
-      final response =
-          jsonDecode(messages.current as String) as Map<String, dynamic>;
+      late final Map<String, dynamic> response;
+      try {
+        final current = messages.current;
+        if (current is! String) throw const FormatException();
+        response = (jsonDecode(current) as Map).cast<String, dynamic>();
+      } catch (_) {
+        throw const IntearWalletException.invalidResponse();
+      }
       if (response['type'] == 'error') {
-        throw IntearWalletException(
-          (response['message'] ?? 'Unknown wallet error') as String,
-        );
+        final message = response['message'];
+        final normalized = message is String ? message.toLowerCase() : '';
+        if (normalized.contains('unsupported')) {
+          throw const IntearWalletException.unsupported();
+        }
+        if (normalized.contains('reject') ||
+            normalized.contains('declin') ||
+            normalized.contains('cancel')) {
+          throw const IntearWalletException.rejected();
+        }
+        throw const IntearWalletException.invalidResponse();
       }
       if (response['type'] != successType) {
-        throw StateError('Unexpected wallet response: ${response['type']}');
+        throw const IntearWalletException.invalidResponse();
       }
       return response;
+    } on IntearWalletException {
+      rethrow;
+    } on TimeoutException {
+      throw const IntearWalletException.timeout();
+    } catch (_) {
+      throw const IntearWalletException.transport();
     } finally {
-      await channel.sink.close();
+      try {
+        await channel?.sink.close();
+      } catch (_) {
+        // Closing diagnostics must not replace the operation result.
+      }
     }
+  }
+
+  NearSdkException _normalizeIntearError(Object error) {
+    if (error is NearSdkException) return error;
+    if (error is TimeoutException) {
+      return const IntearWalletException.timeout();
+    }
+    if (error is UnsupportedError) {
+      return const IntearWalletException.unsupported();
+    }
+    if (error is FormatException ||
+        error is TypeError ||
+        error is ArgumentError) {
+      return const IntearWalletException.invalidResponse();
+    }
+    return const IntearWalletException.unknown();
+  }
+
+  void _emitWalletEvent(
+    NearLogEventType type, {
+    required String operation,
+    required Stopwatch stopwatch,
+    required String outcome,
+    NearErrorCode? failureCode,
+  }) {
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: failureCode == null ? NearLogLevel.info : NearLogLevel.error,
+        type: type,
+        operation: operation,
+        metadata: <String, Object?>{
+          'walletId': 'intear',
+          'durationMs': stopwatch.elapsedMilliseconds,
+          'outcome': outcome,
+          if (failureCode != null) 'failureCode': failureCode.name,
+        },
+      ),
+    );
   }
 }
 
-/// The wallet returned an error (e.g. the user rejected the request).
-class IntearWalletException implements Exception {
-  IntearWalletException(this.message);
-  final String message;
+/// No app key is stored for the requested Intear account.
+class IntearWalletNotConnectedException extends IntearWalletException
+    implements StateError {
+  const IntearWalletNotConnectedException()
+    : super(
+        'No Intear wallet session is available.',
+        code: NearErrorCode.notConnected,
+      );
 
   @override
-  String toString() => 'IntearWalletException: $message';
+  StackTrace? get stackTrace => null;
+}
+
+/// The wallet returned an error (e.g. the user rejected the request).
+class IntearWalletException extends NearSdkException {
+  const IntearWalletException(
+    String message, {
+    NearErrorCode code = NearErrorCode.userRejected,
+    bool retryable = false,
+  }) : super(code: code, message: message, retryable: retryable);
+
+  const IntearWalletException.rejected()
+    : super(
+        code: NearErrorCode.userRejected,
+        message: 'The Intear Wallet request was rejected.',
+      );
+
+  const IntearWalletException.invalidResponse()
+    : super(
+        code: NearErrorCode.walletResponseInvalid,
+        message: 'Intear Wallet returned an invalid response.',
+      );
+
+  const IntearWalletException.accountMismatch()
+    : super(
+        code: NearErrorCode.accountMismatch,
+        message: 'Intear Wallet returned a different account.',
+      );
+
+  const IntearWalletException.signatureVerification()
+    : super(
+        code: NearErrorCode.signatureVerificationFailed,
+        message: 'The Intear Wallet signature could not be verified.',
+      );
+
+  const IntearWalletException.deepLink()
+    : super(
+        code: NearErrorCode.deepLinkUnavailable,
+        message: 'The Intear Wallet app could not be opened.',
+      );
+
+  const IntearWalletException.timeout()
+    : super(
+        code: NearErrorCode.rpcTimeout,
+        message: 'The Intear Wallet request timed out.',
+        retryable: true,
+      );
+
+  const IntearWalletException.transport()
+    : super(
+        code: NearErrorCode.rpcUnavailable,
+        message: 'The Intear Wallet bridge is unavailable.',
+        retryable: true,
+      );
+
+  const IntearWalletException.unsupported()
+    : super(
+        code: NearErrorCode.unsupportedOperation,
+        message: 'The Intear Wallet operation is unsupported.',
+      );
+
+  const IntearWalletException.unknown()
+    : super(
+        code: NearErrorCode.unknown,
+        message: 'The Intear Wallet request failed.',
+      );
+
+  @override
+  String toString() =>
+      'IntearWalletException(code: $code, retryable: $retryable)';
 }

@@ -87,10 +87,14 @@ class MyNearWalletAdapter implements WalletAdapter {
     required this.config,
     required this.launchUrl,
     KeyStore? keyStore,
+    this.logger,
   }) : keyStore = keyStore ?? InMemoryKeyStore();
 
   final MyNearWalletConfig config;
   final UrlLauncher launchUrl;
+
+  /// Receives safe operational diagnostics for wallet flows.
+  final NearLogger? logger;
 
   /// Persists the function-call key generated during sign-in so it survives
   /// the redirect and can sign subsequent calls locally. Defaults to an
@@ -98,6 +102,7 @@ class MyNearWalletAdapter implements WalletAdapter {
   final KeyStore keyStore;
 
   WalletAccount? _account;
+  final Map<String, DateTime> _flowStartedAt = <String, DateTime>{};
 
   @override
   String get id => 'my-near-wallet';
@@ -141,21 +146,31 @@ class MyNearWalletAdapter implements WalletAdapter {
     required AccountId contractId,
     List<String>? methodNames,
   }) async {
-    // Generate the function-call key the wallet will provision, stash it as
-    // the pending key (so it survives the redirect), and launch /login with
-    // its real public key. The private half stays with us for local signing.
-    final keyPair = await KeyPairEd25519.generate();
-    await keyStore.setPendingKey(keyPair);
-
-    final uri = buildSignInUrl(
-      contractId: contractId,
-      publicKey: keyPair.publicKey,
-      methodNames: methodNames ?? const [],
-    );
-    await launchUrl(uri);
-
-    // The wallet redirects back; the account is resolved in [completeSignIn].
-    return [];
+    _openWalletFlow('signIn');
+    try {
+      // The pending key survives the redirect; only its public half is sent.
+      final keyPair = await KeyPairEd25519.generate();
+      await keyStore.setPendingKey(keyPair);
+      final uri = buildSignInUrl(
+        contractId: contractId,
+        publicKey: keyPair.publicKey,
+        methodNames: methodNames ?? const [],
+      );
+      if (!await launchUrl(uri)) {
+        throw const MyNearWalletException.deepLink();
+      }
+      // The wallet redirects back; [completeSignIn] resolves the account.
+      return const <WalletAccount>[];
+    } catch (error, stackTrace) {
+      try {
+        await keyStore.clearPendingKey();
+      } catch (_) {
+        // Preserve the original wallet-flow failure.
+      }
+      final normalized = _normalizeMyNearError(error);
+      _finishWalletFlow('signIn', failureCode: normalized.code);
+      Error.throwWithStackTrace(normalized, stackTrace);
+    }
   }
 
   /// Completes sign-in from the wallet's callback [callbackUri].
@@ -168,46 +183,77 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// Call this on app start (web: the initial URL) or when a deep link
   /// arrives (mobile).
   Future<WalletAccount?> completeSignIn(Uri callbackUri) async {
-    // Only URIs landing on the configured redirect URLs may complete a
-    // sign-in — an arbitrary deep link with an account_id must not.
-    if (!_matchesConfiguredCallback(callbackUri)) return null;
+    NearErrorCode? failureCode;
+    try {
+      // Only configured redirect URLs may complete a sign-in.
+      if (!_matchesConfiguredCallback(callbackUri)) {
+        failureCode = NearErrorCode.walletResponseInvalid;
+        return null;
+      }
 
-    final callback = MyNearWalletCallback.fromUri(callbackUri);
-    if (!callback.isSuccess || callback.accountId == null) {
+      final callback = MyNearWalletCallback.fromUri(callbackUri);
+      if (!callback.isSuccess || callback.accountId == null) {
+        failureCode = callback.isError
+            ? NearErrorCode.userRejected
+            : NearErrorCode.walletResponseInvalid;
+        await keyStore.clearPendingKey();
+        return null;
+      }
+
+      final pending = await keyStore.getPendingKey();
+      if (pending == null) {
+        failureCode = NearErrorCode.missingCallback;
+        return null;
+      }
+
+      final returnedKey = callback.publicKey;
+      if (returnedKey == null || returnedKey != pending.publicKey.value) {
+        failureCode = NearErrorCode.walletResponseInvalid;
+        await keyStore.clearPendingKey();
+        return null;
+      }
+
+      late final AccountId accountId;
+      try {
+        accountId = AccountId(callback.accountId!);
+      } catch (_) {
+        failureCode = NearErrorCode.walletResponseInvalid;
+        await keyStore.clearPendingKey();
+        return null;
+      }
+      await keyStore.setKey(accountId, pending);
       await keyStore.clearPendingKey();
-      return null;
+
+      final account = WalletAccount(
+        accountId: accountId,
+        publicKey: pending.publicKey,
+      );
+      _account = account;
+      return account;
+    } catch (error, stackTrace) {
+      final normalized = _normalizeMyNearError(error);
+      failureCode = normalized.code;
+      Error.throwWithStackTrace(normalized, stackTrace);
+    } finally {
+      _finishWalletFlow('signIn', failureCode: failureCode);
     }
-
-    final pending = await keyStore.getPendingKey();
-    if (pending == null) return null;
-
-    // The wallet must return the public key it provisioned, and it must be
-    // the pending key we generated — otherwise the callback is not a
-    // response to our request (or we'd hold an unusable secret).
-    final returnedKey = callback.publicKey;
-    if (returnedKey == null || returnedKey != pending.publicKey.value) {
-      await keyStore.clearPendingKey();
-      return null;
-    }
-
-    final accountId = AccountId(callback.accountId!);
-    await keyStore.setKey(accountId, pending);
-    await keyStore.clearPendingKey();
-
-    final account = WalletAccount(
-      accountId: accountId,
-      publicKey: pending.publicKey,
-    );
-    _account = account;
-    return account;
   }
 
   /// Parses a MyNearWallet callback URL without touching the key store.
   ///
   /// Prefer [completeSignIn] for the sign-in flow; this is for inspecting a
   /// raw callback (e.g. transaction-result callbacks).
-  MyNearWalletCallback handleCallback(Uri callbackUri) =>
-      MyNearWalletCallback.fromUri(callbackUri);
+  MyNearWalletCallback handleCallback(Uri callbackUri) {
+    try {
+      final callback = MyNearWalletCallback.fromUri(callbackUri);
+      _finishWalletFlow('callback');
+      return callback;
+    } catch (error, stackTrace) {
+      final normalized = _normalizeMyNearError(error);
+      _finishWalletFlow('callback', failureCode: normalized.code);
+      Error.throwWithStackTrace(normalized, stackTrace);
+    }
+  }
 
   /// Whether [uri] lands on the configured success or failure URL
   /// (scheme, host, port and path — query and fragment are the payload).
@@ -293,10 +339,10 @@ class MyNearWalletAdapter implements WalletAdapter {
       callbackUrl: callbackUrl,
     );
 
-    await launchUrl(uri);
+    await _launchWalletFlow('signAndSendTransaction', uri);
 
     // Result will come from callback handling
-    throw _PendingCallbackException(
+    throw const _PendingCallbackException(
       'Transaction result must be parsed from callback URL. '
       'Call handleTransactionCallback() when you receive the deep link.',
     );
@@ -312,9 +358,9 @@ class MyNearWalletAdapter implements WalletAdapter {
       callbackUrl: callbackUrl,
     );
 
-    await launchUrl(uri);
+    await _launchWalletFlow('signAndSendTransactions', uri);
 
-    throw _PendingCallbackException(
+    throw const _PendingCallbackException(
       'Transaction results must be parsed from callback URL. '
       'Call handleTransactionCallback() when you receive the deep link.',
     );
@@ -323,16 +369,20 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// Handles a transaction callback from MyNearWallet.
   List<TransactionResult> handleTransactionCallback(Uri callbackUri) {
     final callback = MyNearWalletCallback.fromUri(callbackUri);
+    final operation = _flowStartedAt.containsKey('signAndSendTransaction')
+        ? 'signAndSendTransaction'
+        : 'signAndSendTransactions';
 
     if (callback.isError) {
+      _finishWalletFlow(operation, failureCode: NearErrorCode.userRejected);
       return [
         TransactionResult(
           transactionHash: const CryptoHash(''),
           outcome: ExecutionOutcome(
             status: ExecutionStatus.failure(
-              ExecutionError(
-                errorType: callback.errorCode ?? 'Unknown',
-                errorMessage: callback.errorMessage ?? 'Unknown error',
+              const ExecutionError(
+                errorType: 'WalletRejected',
+                errorMessage: 'MyNearWallet rejected the transaction.',
               ),
             ),
             gasBurnt: BigInt.zero,
@@ -341,6 +391,7 @@ class MyNearWalletAdapter implements WalletAdapter {
       ];
     }
 
+    _finishWalletFlow(operation);
     // Parse transaction hashes from callback
     return (callback.transactionHashes ?? []).map((hash) {
       return TransactionResult(
@@ -371,9 +422,9 @@ class MyNearWalletAdapter implements WalletAdapter {
   Future<SignedMessage> signMessage(SignMessageParams params) async {
     final uri = buildSignMessageUrl(params);
 
-    await launchUrl(uri);
+    await _launchWalletFlow('signMessage', uri);
 
-    throw _PendingCallbackException(
+    throw const _PendingCallbackException(
       'Signed message must be parsed from callback URL. '
       'Call handleSignMessageCallback() when you receive the deep link.',
     );
@@ -390,29 +441,48 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// This parses without verifying; to also check the signature
   /// cryptographically use [completeSignMessage].
   SignedMessage handleSignMessageCallback(Uri callbackUri) {
-    final params = {
-      ...callbackUri.queryParameters,
-      if (callbackUri.fragment.isNotEmpty)
-        ...Uri.splitQueryString(callbackUri.fragment),
-    };
-
-    final accountId = params['accountId'] ?? _account?.accountId.value;
-    final publicKey = params['publicKey'];
-    final signature = params['signature'];
-    if (accountId == null || publicKey == null || signature == null) {
-      throw FormatException(
-        'Sign-message callback is missing '
-        '${[if (accountId == null) 'accountId', if (publicKey == null) 'publicKey', if (signature == null) 'signature'].join(', ')}',
-        callbackUri.toString(),
-      );
+    try {
+      final signed = _parseSignMessageCallback(callbackUri);
+      _finishWalletFlow('signMessage');
+      return signed;
+    } catch (error, stackTrace) {
+      final normalized = _normalizeMyNearError(error);
+      _finishWalletFlow('signMessage', failureCode: normalized.code);
+      Error.throwWithStackTrace(normalized, stackTrace);
     }
+  }
 
-    return SignedMessage(
-      accountId: AccountId(accountId),
-      publicKey: PublicKey(publicKey),
-      signature: signature,
-      state: params['state'],
-    );
+  SignedMessage _parseSignMessageCallback(Uri callbackUri) {
+    try {
+      final params = {
+        ...callbackUri.queryParameters,
+        if (callbackUri.fragment.isNotEmpty)
+          ...Uri.splitQueryString(callbackUri.fragment),
+      };
+
+      final accountId = params['accountId'] ?? _account?.accountId.value;
+      final publicKey = params['publicKey'];
+      final signature = params['signature'];
+      if (accountId == null ||
+          accountId.isEmpty ||
+          publicKey == null ||
+          publicKey.isEmpty ||
+          signature == null ||
+          signature.isEmpty) {
+        throw const MyNearWalletCallbackException();
+      }
+
+      return SignedMessage(
+        accountId: AccountId(accountId),
+        publicKey: PublicKey(publicKey),
+        signature: signature,
+        state: params['state'],
+      );
+    } on MyNearWalletCallbackException {
+      rethrow;
+    } catch (_) {
+      throw const MyNearWalletCallbackException();
+    }
   }
 
   /// Parses **and verifies** a sign-message callback against the original
@@ -433,37 +503,41 @@ class MyNearWalletAdapter implements WalletAdapter {
     Uri callbackUri, {
     required SignMessageParams request,
   }) async {
-    final signed = handleSignMessageCallback(callbackUri);
+    try {
+      final signed = _parseSignMessageCallback(callbackUri);
 
-    if (request.state != null && signed.state != request.state) {
-      throw FormatException(
-        'Sign-message callback state mismatch: '
-        'expected "${request.state}", got "${signed.state}"',
-        callbackUri.toString(),
-      );
-    }
+      if (request.state != null && signed.state != request.state) {
+        throw const MyNearWalletCallbackException();
+      }
 
-    final payload = Nep413Payload(
-      message: request.message,
-      recipient: request.recipient,
-      nonce: request.nonce,
-      callbackUrl: request.callbackUrl ?? config.successUrl,
-    );
-    final valid = await verifyNep413Signature(
-      payload: payload,
-      signed: Nep413SignedMessage(
-        accountId: signed.accountId,
-        publicKey: signed.publicKey,
-        signature: signed.signature,
-      ),
-    );
-    if (!valid) {
-      throw SignatureVerificationException(
-        'Sign-message callback signature does not verify for '
-        '${signed.accountId.value} (${signed.publicKey.value})',
+      final payload = Nep413Payload(
+        message: request.message,
+        recipient: request.recipient,
+        nonce: request.nonce,
+        callbackUrl: request.callbackUrl ?? config.successUrl,
       );
+      try {
+        final valid = await verifyNep413Signature(
+          payload: payload,
+          signed: Nep413SignedMessage(
+            accountId: signed.accountId,
+            publicKey: signed.publicKey,
+            signature: signed.signature,
+          ),
+        );
+        if (!valid) throw const SignatureVerificationException();
+      } on SignatureVerificationException {
+        rethrow;
+      } catch (_) {
+        throw const SignatureVerificationException();
+      }
+      _finishWalletFlow('signMessage');
+      return signed;
+    } catch (error, stackTrace) {
+      final normalized = _normalizeMyNearError(error);
+      _finishWalletFlow('signMessage', failureCode: normalized.code);
+      Error.throwWithStackTrace(normalized, stackTrace);
     }
-    return signed;
   }
 
   @override
@@ -479,11 +553,84 @@ class MyNearWalletAdapter implements WalletAdapter {
       },
     );
 
-    await launchUrl(uri);
+    await _launchWalletFlow('verifyOwner', uri);
 
-    throw _PendingCallbackException(
+    throw const _PendingCallbackException(
       'Verification result must be parsed from callback URL.',
     );
+  }
+
+  Future<void> _launchWalletFlow(String operation, Uri uri) async {
+    _openWalletFlow(operation);
+    try {
+      if (!await launchUrl(uri)) {
+        throw const MyNearWalletException.deepLink();
+      }
+    } catch (error, stackTrace) {
+      final normalized = _normalizeMyNearError(error);
+      _finishWalletFlow(operation, failureCode: normalized.code);
+      Error.throwWithStackTrace(normalized, stackTrace);
+    }
+  }
+
+  void _openWalletFlow(String operation) {
+    _flowStartedAt[operation] = DateTime.now();
+    _emitWalletEvent(
+      NearLogEventType.walletFlowOpened,
+      operation: operation,
+      durationMs: 0,
+      outcome: 'opened',
+    );
+  }
+
+  void _finishWalletFlow(String operation, {NearErrorCode? failureCode}) {
+    final startedAt = _flowStartedAt.remove(operation);
+    final durationMs = startedAt == null
+        ? 0
+        : DateTime.now().difference(startedAt).inMilliseconds;
+    _emitWalletEvent(
+      NearLogEventType.walletCallbackReceived,
+      operation: operation,
+      durationMs: durationMs,
+      outcome: failureCode == null ? 'success' : 'failure',
+      failureCode: failureCode,
+    );
+  }
+
+  void _emitWalletEvent(
+    NearLogEventType type, {
+    required String operation,
+    required int durationMs,
+    required String outcome,
+    NearErrorCode? failureCode,
+  }) {
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: failureCode == null ? NearLogLevel.info : NearLogLevel.error,
+        type: type,
+        operation: operation,
+        metadata: <String, Object?>{
+          'walletId': id,
+          'durationMs': durationMs,
+          'outcome': outcome,
+          if (failureCode != null) 'failureCode': failureCode.name,
+        },
+      ),
+    );
+  }
+
+  NearSdkException _normalizeMyNearError(Object error) {
+    if (error is NearSdkException) return error;
+    if (error is UnsupportedError) {
+      return const MyNearWalletException.unsupported();
+    }
+    if (error is FormatException ||
+        error is TypeError ||
+        error is ArgumentError) {
+      return const MyNearWalletCallbackException();
+    }
+    return const MyNearWalletException.unknown();
   }
 
   @override
@@ -493,12 +640,59 @@ class MyNearWalletAdapter implements WalletAdapter {
 }
 
 /// Exception thrown when waiting for a callback from the wallet.
-class _PendingCallbackException implements Exception {
-  _PendingCallbackException(this.message);
-  final String message;
+class _PendingCallbackException extends NearSdkException {
+  const _PendingCallbackException(String message)
+    : super(code: NearErrorCode.missingCallback, message: message);
+}
+
+/// A normalized MyNearWallet failure.
+class MyNearWalletException extends NearSdkException {
+  const MyNearWalletException(
+    String message, {
+    NearErrorCode code = NearErrorCode.unknown,
+    bool retryable = false,
+  }) : super(code: code, message: message, retryable: retryable);
+
+  const MyNearWalletException.deepLink()
+    : super(
+        code: NearErrorCode.deepLinkUnavailable,
+        message: 'The MyNearWallet page could not be opened.',
+      );
+
+  const MyNearWalletException.unsupported()
+    : super(
+        code: NearErrorCode.unsupportedOperation,
+        message: 'The MyNearWallet operation is unsupported.',
+      );
+
+  const MyNearWalletException.unknown()
+    : super(
+        code: NearErrorCode.unknown,
+        message: 'The MyNearWallet request failed.',
+      );
 
   @override
-  String toString() => message;
+  String toString() =>
+      'MyNearWalletException(code: $code, retryable: $retryable)';
+}
+
+/// A malformed MyNearWallet callback.
+class MyNearWalletCallbackException extends NearSdkException
+    implements FormatException {
+  const MyNearWalletCallbackException()
+    : super(
+        code: NearErrorCode.walletResponseInvalid,
+        message: 'MyNearWallet returned an invalid callback.',
+      );
+
+  @override
+  int? get offset => null;
+
+  @override
+  dynamic get source => null;
+
+  @override
+  String toString() => 'MyNearWalletCallbackException(code: $code)';
 }
 
 /// Parsed callback data from MyNearWallet.
@@ -552,10 +746,11 @@ class MyNearWalletCallback {
 }
 
 /// A wallet callback carried a signature that does not verify.
-class SignatureVerificationException implements Exception {
-  SignatureVerificationException(this.message);
-  final String message;
+class SignatureVerificationException extends NearSdkException {
+  const SignatureVerificationException([
+    String message = 'The MyNearWallet signature could not be verified.',
+  ]) : super(code: NearErrorCode.signatureVerificationFailed, message: message);
 
   @override
-  String toString() => 'SignatureVerificationException: $message';
+  String toString() => 'SignatureVerificationException(code: $code)';
 }

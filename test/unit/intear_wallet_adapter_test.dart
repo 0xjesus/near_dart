@@ -70,28 +70,41 @@ Future<bool> verifyRequestSignature(Map<String, dynamic> data, String payload) {
   );
 }
 
+String corruptSignature(String signature) {
+  final bytes = base64Decode(signature);
+  bytes[0] ^= 1;
+  return base64Encode(bytes);
+}
+
 void main() {
   late FakeBridge bridge;
   late InMemoryKeyStore keyStore;
+  late bool launchResult;
 
-  IntearWalletAdapter adapter({AccountId? contractId}) => IntearWalletAdapter(
+  IntearWalletAdapter adapter({
+    AccountId? contractId,
+    NearLogger? logger,
+    Duration responseTimeout = const Duration(seconds: 10),
+  }) => IntearWalletAdapter(
     config: IntearWalletConfig(
       origin: 'https://example.app',
       networkId: 'testnet',
       bridgeUrl: bridge.url,
       contractId: contractId,
-      responseTimeout: const Duration(seconds: 10),
+      responseTimeout: responseTimeout,
     ),
     keyStore: keyStore,
     launchUrl: (uri) async {
       bridge.launchedUris.add(uri);
-      return true;
+      return launchResult;
     },
+    logger: logger,
   );
 
   setUp(() async {
     bridge = await FakeBridge.start();
     keyStore = InMemoryKeyStore();
+    launchResult = true;
   });
 
   tearDown(() => bridge.close());
@@ -166,14 +179,149 @@ void main() {
       expect(
         () => adapter().signIn(),
         throwsA(
-          isA<IntearWalletException>().having(
-            (e) => e.message,
-            'message',
-            'User rejected',
-          ),
+          isA<IntearWalletException>()
+              .having((error) => error.code, 'code', NearErrorCode.userRejected)
+              .having(
+                (error) => error.toString(),
+                'safe error',
+                isNot(contains('User rejected')),
+              ),
         ),
       );
     });
+
+    test('verifies a requested signed message before persisting', () async {
+      final walletKey = await KeyPairEd25519.generate();
+      final payload = Nep413Payload(
+        message: 'Sign in to example.app',
+        recipient: 'example.app',
+        nonce: List<int>.generate(32, (i) => i),
+      );
+      final signed = await signNep413Message(
+        payload: payload,
+        keyPair: walletKey,
+        accountId: AccountId('alice.testnet'),
+      );
+      bridge.respond = (_) => {
+        'type': 'connected',
+        'accounts': [
+          {'accountId': 'alice.testnet'},
+        ],
+        'signedMessage': {
+          'accountId': signed.accountId.value,
+          'publicKey': signed.publicKey.value,
+          'signature': signed.signature,
+        },
+      };
+
+      final result = await adapter().signIn(messageToSign: payload);
+
+      expect(result.signedMessage?.signature, signed.signature);
+      expect(await keyStore.getKey(AccountId('alice.testnet')), isNotNull);
+    });
+
+    test('rejects an invalid requested signature without persisting', () async {
+      final walletKey = await KeyPairEd25519.generate();
+      final payload = Nep413Payload(
+        message: 'Sign in to example.app',
+        recipient: 'example.app',
+        nonce: List<int>.generate(32, (i) => i),
+      );
+      final signed = await signNep413Message(
+        payload: payload,
+        keyPair: walletKey,
+        accountId: AccountId('alice.testnet'),
+      );
+      bridge.respond = (_) => {
+        'type': 'connected',
+        'accounts': [
+          {'accountId': 'alice.testnet'},
+        ],
+        'signedMessage': {
+          'accountId': signed.accountId.value,
+          'publicKey': signed.publicKey.value,
+          'signature': corruptSignature(signed.signature),
+        },
+      };
+
+      await expectLater(
+        adapter().signIn(messageToSign: payload),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.signatureVerificationFailed,
+          ),
+        ),
+      );
+      expect(await keyStore.getKey(AccountId('alice.testnet')), isNull);
+    });
+
+    test('requires a signed response only when one was requested', () async {
+      final payload = Nep413Payload(
+        message: 'Sign in',
+        recipient: 'example.app',
+        nonce: List<int>.filled(32, 9),
+      );
+      bridge.respond = (_) => {
+        'type': 'connected',
+        'accounts': [
+          {'accountId': 'alice.testnet'},
+        ],
+      };
+
+      await expectLater(
+        adapter().signIn(messageToSign: payload),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.walletResponseInvalid,
+          ),
+        ),
+      );
+      expect(await keyStore.getKey(AccountId('alice.testnet')), isNull);
+    });
+
+    test(
+      'rejects a signed account different from the connected account',
+      () async {
+        final walletKey = await KeyPairEd25519.generate();
+        final payload = Nep413Payload(
+          message: 'Sign in',
+          recipient: 'example.app',
+          nonce: List<int>.filled(32, 8),
+        );
+        final signed = await signNep413Message(
+          payload: payload,
+          keyPair: walletKey,
+          accountId: AccountId('mallory.testnet'),
+        );
+        bridge.respond = (_) => {
+          'type': 'connected',
+          'accounts': [
+            {'accountId': 'alice.testnet'},
+          ],
+          'signedMessage': {
+            'accountId': signed.accountId.value,
+            'publicKey': signed.publicKey.value,
+            'signature': signed.signature,
+          },
+        };
+
+        await expectLater(
+          adapter().signIn(messageToSign: payload),
+          throwsA(
+            isA<NearSdkException>().having(
+              (error) => error.code,
+              'code',
+              NearErrorCode.accountMismatch,
+            ),
+          ),
+        );
+        expect(await keyStore.getKey(AccountId('alice.testnet')), isNull);
+      },
+    );
   });
 
   group('signMessage', () {
@@ -193,28 +341,35 @@ void main() {
       bridge.launchedUris.clear();
     });
 
-    test('sends the NEP-413 JSON and returns the wallet signature', () async {
+    test('sends the NEP-413 JSON and verifies the wallet signature', () async {
+      final walletKey = await KeyPairEd25519.generate();
+      final payload = Nep413Payload(
+        message: 'Sign in to app.com',
+        recipient: 'app.com',
+        nonce: List<int>.generate(32, (i) => i),
+      );
+      final walletSignature = await signNep413Message(
+        payload: payload,
+        keyPair: walletKey,
+        accountId: AccountId('alice.testnet'),
+      );
       bridge.respond = (req) => {
         'type': 'signed',
         'signature': {
-          'accountId': 'alice.testnet',
-          'publicKey': 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
-          'signature': base64Encode(List.filled(64, 7)),
+          'accountId': walletSignature.accountId.value,
+          'publicKey': walletSignature.publicKey.value,
+          'signature': walletSignature.signature,
           'state': null,
         },
       };
 
-      final nonce = List<int>.generate(32, (i) => i);
       final signed = await adapter().signMessage(
         accountId: AccountId('alice.testnet'),
-        payload: Nep413Payload(
-          message: 'Sign in to app.com',
-          recipient: 'app.com',
-          nonce: nonce,
-        ),
+        payload: payload,
       );
 
       expect(signed.accountId.value, 'alice.testnet');
+      expect(signed.signature, walletSignature.signature);
       expect(
         bridge.launchedUris.single.toString(),
         'intear://sign-message?session_id=sess-123',
@@ -223,11 +378,83 @@ void main() {
       final nep413 = jsonDecode(data['message'] as String) as Map;
       expect(nep413['message'], 'Sign in to app.com');
       expect(nep413['recipient'], 'app.com');
-      expect(nep413['nonce'], nonce);
+      expect(nep413['nonce'], payload.nonce);
       expect(nep413['callback_url'], isNull);
       expect(
         await verifyRequestSignature(data, data['message'] as String),
         isTrue,
+      );
+    });
+
+    test('rejects an invalid wallet signature', () async {
+      final walletKey = await KeyPairEd25519.generate();
+      final payload = Nep413Payload(
+        message: 'Approve login',
+        recipient: 'app.com',
+        nonce: List<int>.filled(32, 4),
+      );
+      final signed = await signNep413Message(
+        payload: payload,
+        keyPair: walletKey,
+        accountId: AccountId('alice.testnet'),
+      );
+      bridge.respond = (_) => {
+        'type': 'signed',
+        'signature': {
+          'accountId': signed.accountId.value,
+          'publicKey': signed.publicKey.value,
+          'signature': corruptSignature(signed.signature),
+        },
+      };
+
+      await expectLater(
+        adapter().signMessage(
+          accountId: AccountId('alice.testnet'),
+          payload: payload,
+        ),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.signatureVerificationFailed,
+          ),
+        ),
+      );
+    });
+
+    test('rejects a signature returned for another account', () async {
+      final walletKey = await KeyPairEd25519.generate();
+      final payload = Nep413Payload(
+        message: 'Approve login',
+        recipient: 'app.com',
+        nonce: List<int>.filled(32, 5),
+      );
+      final signed = await signNep413Message(
+        payload: payload,
+        keyPair: walletKey,
+        accountId: AccountId('mallory.testnet'),
+      );
+      bridge.respond = (_) => {
+        'type': 'signed',
+        'signature': {
+          'accountId': signed.accountId.value,
+          'publicKey': signed.publicKey.value,
+          'signature': signed.signature,
+        },
+      };
+
+      await expectLater(
+        adapter().signMessage(
+          accountId: AccountId('alice.testnet'),
+          payload: payload,
+        ),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.accountMismatch,
+          ),
+        ),
       );
     });
 
@@ -303,6 +530,78 @@ void main() {
         await verifyRequestSignature(data, data['transactions'] as String),
         isTrue,
       );
+    });
+  });
+
+  group('failures and diagnostics', () {
+    test('types deep-link failures without exposing the link', () async {
+      launchResult = false;
+      bridge.respond = (_) => {
+        'type': 'connected',
+        'accounts': [
+          {'accountId': 'alice.testnet'},
+        ],
+      };
+
+      await expectLater(
+        adapter().signIn(),
+        throwsA(
+          isA<NearSdkException>()
+              .having(
+                (error) => error.code,
+                'code',
+                NearErrorCode.deepLinkUnavailable,
+              )
+              .having(
+                (error) => error.toString(),
+                'safe error',
+                isNot(contains('intear://')),
+              ),
+        ),
+      );
+    });
+
+    test('emits only safe wallet lifecycle metadata', () async {
+      final events = <NearLogEvent>[];
+      bridge.respond = (_) => {
+        'type': 'connected',
+        'accounts': [
+          {'accountId': 'alice.testnet'},
+        ],
+      };
+
+      await adapter(logger: events.add).signIn();
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.walletFlowOpened,
+        NearLogEventType.walletCallbackReceived,
+      ]);
+      for (final event in events) {
+        expect(event.operation, 'signIn');
+        expect(
+          event.metadata.keys,
+          everyElement(
+            isIn(['walletId', 'durationMs', 'outcome', 'failureCode']),
+          ),
+        );
+        expect(event.toString(), isNot(contains('sess-123')));
+      }
+      expect(events.last.metadata['outcome'], 'success');
+    });
+
+    test('logger exceptions do not alter adapter behavior', () async {
+      bridge.respond = (_) => {
+        'type': 'connected',
+        'accounts': [
+          {'accountId': 'alice.testnet'},
+        ],
+      };
+
+      final result = await adapter(
+        logger: (_) => throw StateError('logger'),
+      ).signIn();
+
+      expect(result.account.accountId.value, 'alice.testnet');
     });
   });
 }

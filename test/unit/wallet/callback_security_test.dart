@@ -87,7 +87,16 @@ void main() {
         () => adapter.handleSignMessageCallback(
           Uri.parse('myapp://wallet/success#accountId=alice.testnet'),
         ),
-        throwsFormatException,
+        throwsA(
+          allOf(
+            isA<FormatException>(),
+            isA<NearSdkException>().having(
+              (error) => error.code,
+              'code',
+              NearErrorCode.walletResponseInvalid,
+            ),
+          ),
+        ),
       );
     });
   });
@@ -147,7 +156,13 @@ void main() {
 
       expect(
         () => adapter.completeSignMessage(forged, request: request),
-        throwsA(isA<SignatureVerificationException>()),
+        throwsA(
+          isA<SignatureVerificationException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.signatureVerificationFailed,
+          ),
+        ),
       );
     });
 
@@ -156,8 +171,100 @@ void main() {
 
       expect(
         () => adapter.completeSignMessage(wrongState, request: request),
-        throwsFormatException,
+        throwsA(
+          allOf(
+            isA<FormatException>(),
+            isA<NearSdkException>().having(
+              (error) => error.code,
+              'code',
+              NearErrorCode.walletResponseInvalid,
+            ),
+          ),
+        ),
       );
+    });
+  });
+
+  group('wallet diagnostics', () {
+    test('logs callback receipt without callback values', () async {
+      final events = <NearLogEvent>[];
+      final loggingAdapter = MyNearWalletAdapter(
+        config: MyNearWalletConfig(
+          contractId: AccountId('contract.testnet'),
+          successUrl: 'myapp://wallet/success',
+          failureUrl: 'myapp://wallet/failure',
+          network: MyNearWalletNetwork.testnet,
+        ),
+        launchUrl: (_) async => true,
+        logger: events.add,
+      );
+      await loggingAdapter.signIn(contractId: AccountId('contract.testnet'));
+      final pending = await loggingAdapter.keyStore.getPendingKey();
+      const callbackSecret = 'callback-secret-value';
+
+      final account = await loggingAdapter.completeSignIn(
+        Uri.parse(
+          'myapp://wallet/success?account_id=$callbackSecret'
+          '&public_key=${pending!.publicKey.value}#fragment-secret',
+        ),
+      );
+
+      expect(account?.accountId.value, callbackSecret);
+      expect(events.map((event) => event.type), [
+        NearLogEventType.walletFlowOpened,
+        NearLogEventType.walletCallbackReceived,
+      ]);
+      expect(events.last.operation, 'signIn');
+      expect(events.join(), isNot(contains(callbackSecret)));
+      expect(events.join(), isNot(contains('fragment-secret')));
+      for (final event in events) {
+        expect(
+          event.metadata.keys,
+          everyElement(
+            isIn(['walletId', 'durationMs', 'outcome', 'failureCode']),
+          ),
+        );
+      }
+    });
+
+    test('types launch failure and ignores logger exceptions', () async {
+      final failingAdapter = MyNearWalletAdapter(
+        config: MyNearWalletConfig(
+          contractId: AccountId('contract.testnet'),
+          successUrl: 'myapp://wallet/success',
+          failureUrl: 'myapp://wallet/failure',
+          network: MyNearWalletNetwork.testnet,
+        ),
+        launchUrl: (_) async => false,
+        logger: (_) => throw StateError('logger failed'),
+      );
+
+      await expectLater(
+        failingAdapter.signIn(contractId: AccountId('contract.testnet')),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.deepLinkUnavailable,
+          ),
+        ),
+      );
+    });
+
+    test('does not copy callback values into transaction errors', () {
+      const callbackCode = 'callback-code-secret';
+      const callbackMessage = 'callback-message-secret';
+
+      final result = adapter.handleTransactionCallback(
+        Uri.parse(
+          'myapp://wallet/failure?errorCode=$callbackCode'
+          '&errorMessage=$callbackMessage',
+        ),
+      );
+      final serialized = result.single.outcome.toJson().toString();
+
+      expect(serialized, isNot(contains(callbackCode)));
+      expect(serialized, isNot(contains(callbackMessage)));
     });
   });
 
