@@ -197,10 +197,14 @@ void main() {
       const endpoint =
           'custom://userinfo-sentinel@example.com/path-sentinel?query-sentinel';
       final events = <NearLogEvent>[];
+      var transportCalls = 0;
       final client = OneClickExplorerClient(
         baseUri: Uri.parse(endpoint),
         logger: events.add,
-        httpClient: MockClient((_) async => http.Response('offline', 503)),
+        httpClient: MockClient((_) async {
+          transportCalls++;
+          throw StateError('transport should not be called');
+        }),
       );
 
       late Object escaped;
@@ -211,6 +215,13 @@ void main() {
       }
 
       expect(escaped, isA<OneClickExplorerApiException>());
+      final exception = escaped as OneClickExplorerApiException;
+      expect(exception.code, NearErrorCode.invalidInput);
+      expect(
+        exception.message,
+        'Explorer API endpoint is invalid or unsupported.',
+      );
+      expect(exception.retryable, isFalse);
 
       expect(events.map((event) => event.type), [
         NearLogEventType.intentsRequestStarted,
@@ -218,6 +229,48 @@ void main() {
       ]);
       _expectOneIntentsTerminalEvent(events);
       _expectNoCustomEndpointSentinels([...events, escaped]);
+      expect(transportCalls, 0);
+    });
+
+    test('normalizes supported endpoint transport errors', () async {
+      const endpoint =
+          'https://userinfo-sentinel@transport.example.com/path-sentinel/?base-query-sentinel';
+      final events = <NearLogEvent>[];
+      var transportCalls = 0;
+      final client = OneClickExplorerClient(
+        baseUri: Uri.parse(endpoint),
+        logger: events.add,
+        httpClient: MockClient((request) async {
+          transportCalls++;
+          throw StateError('transport failure for ${request.url}');
+        }),
+      );
+
+      late Object escaped;
+      try {
+        await client.transactions(
+          OneClickExplorerTransactionsRequest(
+            extraQuery: const {
+              'query-sentinel': ['value'],
+            },
+          ),
+        );
+      } catch (error) {
+        escaped = error;
+      }
+
+      expect(escaped, isA<OneClickExplorerApiException>());
+      final exception = escaped as OneClickExplorerApiException;
+      expect(exception.code, NearErrorCode.rpcUnavailable);
+      expect(exception.message, 'Explorer API transport failed.');
+      expect(exception.retryable, isTrue);
+      expect(events.map((event) => event.type), [
+        NearLogEventType.intentsRequestStarted,
+        NearLogEventType.intentsRequestFailed,
+      ]);
+      _expectOneIntentsTerminalEvent(events);
+      _expectNoTransportEndpointSentinels([...events, escaped]);
+      expect(transportCalls, 1);
     });
   });
 }
@@ -238,6 +291,14 @@ void _expectNoCustomEndpointSentinels(Iterable<Object> values) {
     final rendered = value.toString();
     expect(rendered, isNot(contains('userinfo-sentinel')));
     expect(rendered, isNot(contains('path-sentinel')));
+    expect(rendered, isNot(contains('query-sentinel')));
+  }
+}
+
+void _expectNoTransportEndpointSentinels(Iterable<Object> values) {
+  for (final value in values) {
+    final rendered = value.toString();
+    expect(rendered, isNot(contains('userinfo-sentinel')));
     expect(rendered, isNot(contains('query-sentinel')));
   }
 }

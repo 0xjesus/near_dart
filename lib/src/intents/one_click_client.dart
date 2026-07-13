@@ -9,25 +9,62 @@ import 'intent_signing.dart';
 import 'one_click_auth.dart';
 import 'one_click_models.dart';
 
+enum _OneClickApiFailureKind { http, invalidEndpoint, transport }
+
 /// Exception thrown when the 1Click API returns a non-2xx response.
 class OneClickApiException extends NearSdkException {
   const OneClickApiException(this.statusCode, this.body)
-    : super(
+    : _failureKind = _OneClickApiFailureKind.http,
+      super(
         code: NearErrorCode.invalidResponse,
         message: '1Click API request failed',
       );
 
+  const OneClickApiException.invalidEndpoint()
+    : statusCode = 0,
+      body = '',
+      _failureKind = _OneClickApiFailureKind.invalidEndpoint,
+      super(
+        code: NearErrorCode.invalidInput,
+        message: '1Click API endpoint is invalid or unsupported.',
+      );
+
+  const OneClickApiException.transport()
+    : statusCode = 0,
+      body = '',
+      _failureKind = _OneClickApiFailureKind.transport,
+      super(
+        code: NearErrorCode.rpcUnavailable,
+        message: '1Click API transport failed.',
+        retryable: true,
+      );
+
   final int statusCode;
   final String body;
+  final _OneClickApiFailureKind _failureKind;
 
   @override
-  NearErrorCode get code => _codeForHttpStatus(statusCode);
+  NearErrorCode get code => switch (_failureKind) {
+    _OneClickApiFailureKind.http => _codeForHttpStatus(statusCode),
+    _OneClickApiFailureKind.invalidEndpoint => NearErrorCode.invalidInput,
+    _OneClickApiFailureKind.transport => NearErrorCode.rpcUnavailable,
+  };
 
   @override
-  String get message => '1Click API request failed with HTTP $statusCode';
+  String get message => switch (_failureKind) {
+    _OneClickApiFailureKind.http =>
+      '1Click API request failed with HTTP $statusCode',
+    _OneClickApiFailureKind.invalidEndpoint =>
+      '1Click API endpoint is invalid or unsupported.',
+    _OneClickApiFailureKind.transport => '1Click API transport failed.',
+  };
 
   @override
-  bool get retryable => _isRetryableHttpStatus(statusCode);
+  bool get retryable => switch (_failureKind) {
+    _OneClickApiFailureKind.http => _isRetryableHttpStatus(statusCode),
+    _OneClickApiFailureKind.invalidEndpoint => false,
+    _OneClickApiFailureKind.transport => true,
+  };
 
   @override
   String toString() =>
@@ -203,7 +240,15 @@ class OneClickClient {
 
     http.Response? response;
     try {
-      response = await _send(method, uri, body: body);
+      final endpoint = validateSupportedHttpEndpoint(uri);
+      if (!endpoint.isSupported) {
+        throw const OneClickApiException.invalidEndpoint();
+      }
+      try {
+        response = await _send(method, endpoint.uri!, body: body);
+      } catch (_) {
+        throw const OneClickApiException.transport();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OneClickApiException(response.statusCode, response.body);
       }

@@ -8,25 +8,64 @@ import '../diagnostics/near_errors.dart';
 import 'one_click_auth.dart';
 import 'one_click_models.dart';
 
+enum _OneClickExplorerFailureKind { http, invalidEndpoint, transport }
+
 /// Exception thrown when the NEAR Intents Explorer API returns non-2xx.
 class OneClickExplorerApiException extends NearSdkException {
   const OneClickExplorerApiException(this.statusCode, this.body)
-    : super(
+    : _failureKind = _OneClickExplorerFailureKind.http,
+      super(
         code: NearErrorCode.invalidResponse,
         message: 'Explorer API request failed',
       );
 
+  const OneClickExplorerApiException.invalidEndpoint()
+    : statusCode = 0,
+      body = '',
+      _failureKind = _OneClickExplorerFailureKind.invalidEndpoint,
+      super(
+        code: NearErrorCode.invalidInput,
+        message: 'Explorer API endpoint is invalid or unsupported.',
+      );
+
+  const OneClickExplorerApiException.transport()
+    : statusCode = 0,
+      body = '',
+      _failureKind = _OneClickExplorerFailureKind.transport,
+      super(
+        code: NearErrorCode.rpcUnavailable,
+        message: 'Explorer API transport failed.',
+        retryable: true,
+      );
+
   final int statusCode;
   final String body;
+  final _OneClickExplorerFailureKind _failureKind;
 
   @override
-  NearErrorCode get code => _codeForExplorerHttpStatus(statusCode);
+  NearErrorCode get code => switch (_failureKind) {
+    _OneClickExplorerFailureKind.http => _codeForExplorerHttpStatus(statusCode),
+    _OneClickExplorerFailureKind.invalidEndpoint => NearErrorCode.invalidInput,
+    _OneClickExplorerFailureKind.transport => NearErrorCode.rpcUnavailable,
+  };
 
   @override
-  String get message => 'Explorer API request failed with HTTP $statusCode';
+  String get message => switch (_failureKind) {
+    _OneClickExplorerFailureKind.http =>
+      'Explorer API request failed with HTTP $statusCode',
+    _OneClickExplorerFailureKind.invalidEndpoint =>
+      'Explorer API endpoint is invalid or unsupported.',
+    _OneClickExplorerFailureKind.transport => 'Explorer API transport failed.',
+  };
 
   @override
-  bool get retryable => _isRetryableExplorerHttpStatus(statusCode);
+  bool get retryable => switch (_failureKind) {
+    _OneClickExplorerFailureKind.http => _isRetryableExplorerHttpStatus(
+      statusCode,
+    ),
+    _OneClickExplorerFailureKind.invalidEndpoint => false,
+    _OneClickExplorerFailureKind.transport => true,
+  };
 
   @override
   String toString() =>
@@ -298,10 +337,18 @@ class OneClickExplorerClient {
 
     http.Response? response;
     try {
-      response = await _http.get(
-        uri,
-        headers: {'Accept': 'application/json', ...?auth?.headers},
-      );
+      final endpoint = validateSupportedHttpEndpoint(uri);
+      if (!endpoint.isSupported) {
+        throw const OneClickExplorerApiException.invalidEndpoint();
+      }
+      try {
+        response = await _http.get(
+          endpoint.uri!,
+          headers: {'Accept': 'application/json', ...?auth?.headers},
+        );
+      } catch (_) {
+        throw const OneClickExplorerApiException.transport();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OneClickExplorerApiException(response.statusCode, response.body);
       }

@@ -200,10 +200,27 @@ class NearRpcClient {
       final url = endpoints[index];
       final attempt = index + 1;
       lastStatusCode = null;
+      final endpoint = validateSupportedHttpEndpoint(url);
+      if (!endpoint.isSupported) {
+        lastTransportFailure = RpcResult.failure(
+          RpcError.network('RPC endpoint is invalid or unsupported.'),
+        );
+        if (index < endpoints.length - 1) {
+          _emitRpcEvent(
+            NearLogEventType.rpcRequestRetried,
+            method: method,
+            url: url,
+            attempt: attempt,
+            endpointCount: endpoints.length,
+            stopwatch: stopwatch,
+          );
+        }
+        continue;
+      }
       try {
         final response = await _httpClient
             .post(
-              Uri.parse(url),
+              endpoint.uri!,
               headers: {'Content-Type': 'application/json'},
               body: body,
             )
@@ -280,7 +297,7 @@ class NearRpcClient {
       } on TimeoutException {
         // A stalled node is a transport failure: try the next endpoint.
         lastTransportFailure = RpcResult.failure(
-          RpcError.timeout('Request to $url timed out after $timeout'),
+          RpcError.timeout('RPC request timed out.'),
         );
         if (index < endpoints.length - 1) {
           _emitRpcEvent(
@@ -292,9 +309,9 @@ class NearRpcClient {
             stopwatch: stopwatch,
           );
         }
-      } on http.ClientException catch (e) {
+      } on http.ClientException {
         lastTransportFailure = RpcResult.failure(
-          RpcError.network(e.message, e),
+          RpcError.network('RPC transport failed.'),
         );
         if (index < endpoints.length - 1) {
           _emitRpcEvent(
@@ -306,9 +323,9 @@ class NearRpcClient {
             stopwatch: stopwatch,
           );
         }
-      } catch (e) {
+      } catch (_) {
         lastTransportFailure = RpcResult.failure(
-          RpcError.network('Unknown error: $e', e),
+          RpcError.network('RPC transport failed.'),
         );
         if (index < endpoints.length - 1) {
           _emitRpcEvent(

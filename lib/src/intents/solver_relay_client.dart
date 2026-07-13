@@ -11,23 +11,51 @@ import 'solver_relay_models.dart';
 /// Exception thrown when the solver relay returns an HTTP or JSON-RPC error.
 class SolverRelayException extends NearSdkException {
   const SolverRelayException(this._message, {this.statusCode, this.body})
-    : super(
+    : _codeOverride = null,
+      _retryableOverride = null,
+      super(
         code: NearErrorCode.invalidResponse,
         message: 'Solver relay request failed',
+      );
+
+  const SolverRelayException.invalidEndpoint()
+    : _message = 'Solver relay endpoint is invalid or unsupported.',
+      statusCode = null,
+      body = null,
+      _codeOverride = NearErrorCode.invalidInput,
+      _retryableOverride = false,
+      super(
+        code: NearErrorCode.invalidInput,
+        message: 'Solver relay endpoint is invalid or unsupported.',
+      );
+
+  const SolverRelayException.transport()
+    : _message = 'Solver relay transport failed.',
+      statusCode = null,
+      body = null,
+      _codeOverride = NearErrorCode.rpcUnavailable,
+      _retryableOverride = true,
+      super(
+        code: NearErrorCode.rpcUnavailable,
+        message: 'Solver relay transport failed.',
+        retryable: true,
       );
 
   final String _message;
   final int? statusCode;
   final String? body;
+  final NearErrorCode? _codeOverride;
+  final bool? _retryableOverride;
 
   @override
-  NearErrorCode get code => _codeForSolverFailure(statusCode);
+  NearErrorCode get code => _codeOverride ?? _codeForSolverFailure(statusCode);
 
   @override
   String get message => _message;
 
   @override
-  bool get retryable => _isRetryableSolverFailure(statusCode);
+  bool get retryable =>
+      _retryableOverride ?? _isRetryableSolverFailure(statusCode);
 
   @override
   String toString() =>
@@ -107,20 +135,28 @@ class SolverRelayClient {
 
     http.Response? response;
     try {
-      response = await _http.post(
-        endpoint,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          ...?auth?.headers,
-        },
-        body: jsonEncode({
-          'jsonrpc': '2.0',
-          'id': id,
-          'method': method,
-          'params': params,
-        }),
-      );
+      final validatedEndpoint = validateSupportedHttpEndpoint(endpoint);
+      if (!validatedEndpoint.isSupported) {
+        throw const SolverRelayException.invalidEndpoint();
+      }
+      try {
+        response = await _http.post(
+          validatedEndpoint.uri!,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            ...?auth?.headers,
+          },
+          body: jsonEncode({
+            'jsonrpc': '2.0',
+            'id': id,
+            'method': method,
+            'params': params,
+          }),
+        );
+      } catch (_) {
+        throw const SolverRelayException.transport();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw SolverRelayException(
           'Solver relay request failed with HTTP ${response.statusCode}',
