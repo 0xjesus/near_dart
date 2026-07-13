@@ -591,7 +591,14 @@ void main() {
         thrown = error;
       }
       expect(thrown, isA<StateError>());
-      expect((thrown as StateError).stackTrace, isNotNull);
+      final firstRead = (thrown as StateError).stackTrace;
+      final secondRead = thrown.stackTrace;
+      expect(identical(firstRead, secondRead), isTrue);
+      expect(firstRead.toString(), contains('IntearWalletAdapter._appKeyFor'));
+      expect(
+        firstRead.toString(),
+        isNot(contains('IntearWalletNotConnectedException.stackTrace')),
+      );
     });
   });
 

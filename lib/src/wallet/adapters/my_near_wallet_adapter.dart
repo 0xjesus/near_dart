@@ -123,6 +123,7 @@ class MyNearWalletAdapter implements WalletAdapter {
   final KeyStore keyStore;
 
   _PendingMyNearWalletFlow? _pendingFlow;
+  bool _signInAdmissionReserved = false;
 
   @override
   String get id => 'my-near-wallet';
@@ -182,13 +183,19 @@ class MyNearWalletAdapter implements WalletAdapter {
     required AccountId contractId,
     List<String>? methodNames,
   }) async {
-    if (_pendingFlow != null || await keyStore.getPendingKey() != null) {
+    if (_signInAdmissionReserved || _pendingFlow != null) {
       throw const MyNearWalletException.flowInProgress();
     }
+    _signInAdmissionReserved = true;
     _PendingMyNearWalletFlow? flow;
+    KeyPairEd25519? ownedPendingKey;
     try {
+      if (await keyStore.getPendingKey() != null) {
+        throw const MyNearWalletException.flowInProgress();
+      }
       // The pending key survives the redirect; only its public half is sent.
       final keyPair = await KeyPairEd25519.generate();
+      ownedPendingKey = keyPair;
       await keyStore.setPendingKey(keyPair);
       flow = _openWalletFlow(
         'signIn',
@@ -209,16 +216,27 @@ class MyNearWalletAdapter implements WalletAdapter {
       // The wallet redirects back; [completeSignIn] resolves the account.
       return <WalletAccount>[];
     } catch (error, stackTrace) {
-      try {
-        await keyStore.clearPendingKey();
-      } catch (_) {
-        // Preserve the original wallet-flow failure.
+      if (ownedPendingKey != null) {
+        try {
+          await _clearPendingKeyIfOwned(ownedPendingKey);
+        } catch (_) {
+          // Preserve the original wallet-flow failure.
+        }
       }
       final normalized = _normalizeMyNearError(error);
       if (flow != null) {
         _finishWalletFlow(flow, failureCode: normalized.code);
       }
       Error.throwWithStackTrace(normalized, stackTrace);
+    } finally {
+      _signInAdmissionReserved = false;
+    }
+  }
+
+  Future<void> _clearPendingKeyIfOwned(KeyPairEd25519 ownedKey) async {
+    final current = await keyStore.getPendingKey();
+    if (current?.publicKey.value == ownedKey.publicKey.value) {
+      await keyStore.clearPendingKey();
     }
   }
 
@@ -829,32 +847,37 @@ class MyNearWalletAdapter implements WalletAdapter {
     SignMessageParams? signMessageRequest,
     String? correlationValue,
   }) {
-    if (_pendingFlow != null) {
-      throw const MyNearWalletException.flowInProgress();
+    try {
+      if (_pendingFlow != null) {
+        throw const MyNearWalletException.flowInProgress();
+      }
+      final correlationKey = _availableCorrelationKey([
+        successUrl,
+        if (failureUrl != null) failureUrl,
+      ]);
+      final value = correlationValue ?? _newCorrelationValue();
+      final flow = _PendingMyNearWalletFlow(
+        operation: operation,
+        successUrl: _withCorrelation(successUrl, correlationKey, value),
+        failureUrl: failureUrl == null
+            ? null
+            : _withCorrelation(failureUrl, correlationKey, value),
+        correlationKey: correlationKey,
+        correlationValue: value,
+        signMessageRequest: signMessageRequest,
+      );
+      _pendingFlow = flow;
+      _emitWalletEvent(
+        NearLogEventType.walletFlowOpened,
+        operation: operation,
+        durationMs: 0,
+        outcome: 'opened',
+      );
+      return flow;
+    } catch (error, stackTrace) {
+      final normalized = _normalizeMyNearError(error);
+      Error.throwWithStackTrace(normalized, stackTrace);
     }
-    final correlationKey = _availableCorrelationKey([
-      successUrl,
-      if (failureUrl != null) failureUrl,
-    ]);
-    final value = correlationValue ?? _newCorrelationValue();
-    final flow = _PendingMyNearWalletFlow(
-      operation: operation,
-      successUrl: _withCorrelation(successUrl, correlationKey, value),
-      failureUrl: failureUrl == null
-          ? null
-          : _withCorrelation(failureUrl, correlationKey, value),
-      correlationKey: correlationKey,
-      correlationValue: value,
-      signMessageRequest: signMessageRequest,
-    );
-    _pendingFlow = flow;
-    _emitWalletEvent(
-      NearLogEventType.walletFlowOpened,
-      operation: operation,
-      durationMs: 0,
-      outcome: 'opened',
-    );
-    return flow;
   }
 
   String _availableCorrelationKey(List<String> configuredUrls) {

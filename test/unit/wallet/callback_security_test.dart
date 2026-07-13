@@ -3,6 +3,7 @@
 /// verification of sign-message results.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:near_dart/near_dart.dart';
@@ -229,6 +230,58 @@ void main() {
       expect(await adapter.completeSignIn(callback), isNull);
     });
 
+    test(
+      'simultaneous sign-ins preserve the accepted flow pending key',
+      () async {
+        final keyStore = _BarrierKeyStore();
+        adapter = MyNearWalletAdapter(
+          config: MyNearWalletConfig(
+            contractId: AccountId('contract.testnet'),
+            successUrl: 'myapp://wallet/success',
+            failureUrl: 'myapp://wallet/failure',
+            network: MyNearWalletNetwork.testnet,
+          ),
+          keyStore: keyStore,
+          launchUrl: (uri) async {
+            launchedWalletUrls.add(uri);
+            return true;
+          },
+        );
+
+        Future<Object> outcome(Future<List<WalletAccount>> future) async {
+          try {
+            return await future;
+          } catch (error) {
+            return error;
+          }
+        }
+
+        final first = outcome(
+          adapter.signIn(contractId: AccountId('contract.testnet')),
+        );
+        final second = outcome(
+          adapter.signIn(contractId: AccountId('contract.testnet')),
+        );
+        keyStore.releaseInitialReads();
+        final outcomes = await Future.wait([first, second]);
+
+        expect(outcomes.whereType<List<WalletAccount>>(), hasLength(1));
+        expect(outcomes.whereType<NearSdkException>(), hasLength(1));
+        expect(launchedWalletUrls, hasLength(1));
+        final launch = launchedWalletUrls.single;
+        final callback =
+            withQuery(Uri.parse(launch.queryParameters['success_url']!), {
+              'account_id': 'alice.testnet',
+              'public_key': launch.queryParameters['public_key']!,
+            });
+
+        expect(
+          (await adapter.completeSignIn(callback))?.accountId.value,
+          'alice.testnet',
+        );
+      },
+    );
+
     test('uses one secure correlation value for both sign-in routes', () async {
       adapter = MyNearWalletAdapter(
         config: MyNearWalletConfig(
@@ -361,6 +414,126 @@ void main() {
         (await adapter.completeSignIn(secondCallback))?.accountId.value,
         'bob.testnet',
       );
+    });
+  });
+
+  group('callback URL opening failures', () {
+    const querySecret = 'query-sentinel-secret';
+    const fragmentSecret = 'fragment-sentinel-secret';
+    const malformed =
+        'myapp://[invalid-host?credential=$querySecret'
+        '#token=$fragmentSecret';
+
+    Future<void> expectSanitized(
+      Future<Object?> Function(NearLogger logger) action,
+    ) async {
+      final events = <NearLogEvent>[];
+      late Object error;
+      try {
+        await action(events.add);
+        fail('expected malformed callback URL to throw');
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(
+        error,
+        isA<MyNearWalletCallbackException>().having(
+          (exception) => exception.code,
+          'code',
+          NearErrorCode.walletResponseInvalid,
+        ),
+      );
+      final exposed = '$error ${events.join()}';
+      expect(exposed, isNot(contains(querySecret)));
+      expect(exposed, isNot(contains(fragmentSecret)));
+    }
+
+    test(
+      'normalizes malformed configured sign-in routes on every call',
+      () async {
+        NearLogger? activeLogger;
+        final malformedAdapter = MyNearWalletAdapter(
+          config: MyNearWalletConfig(
+            contractId: AccountId('contract.testnet'),
+            successUrl: 'myapp://wallet/success',
+            failureUrl: malformed,
+            network: MyNearWalletNetwork.testnet,
+          ),
+          launchUrl: (_) async => true,
+          logger: (event) => activeLogger?.call(event),
+        );
+
+        for (var attempt = 0; attempt < 2; attempt++) {
+          await expectSanitized((logger) {
+            activeLogger = logger;
+            return malformedAdapter.signIn(
+              contractId: AccountId('contract.testnet'),
+            );
+          });
+        }
+      },
+    );
+
+    test('normalizes malformed transaction callback routes', () async {
+      await expectSanitized((logger) {
+        final malformedAdapter = MyNearWalletAdapter(
+          config: adapter.config,
+          launchUrl: (_) async => true,
+          logger: logger,
+        );
+        return malformedAdapter.signAndSendTransaction(
+          transaction: Transaction(
+            signerId: AccountId('alice.testnet'),
+            receiverId: AccountId('contract.testnet'),
+            actions: const [],
+          ),
+          callbackUrl: malformed,
+        );
+      });
+      await expectSanitized((logger) {
+        final malformedAdapter = MyNearWalletAdapter(
+          config: adapter.config,
+          launchUrl: (_) async => true,
+          logger: logger,
+        );
+        return malformedAdapter.signAndSendTransactions(
+          transactions: const [],
+          callbackUrl: malformed,
+        );
+      });
+    });
+
+    test('normalizes malformed sign-message callback routes', () async {
+      await expectSanitized((logger) {
+        final malformedAdapter = MyNearWalletAdapter(
+          config: adapter.config,
+          launchUrl: (_) async => true,
+          logger: logger,
+        );
+        return malformedAdapter.signMessage(
+          SignMessageParams(
+            message: 'Sign in',
+            recipient: 'example.app',
+            nonce: List<int>.filled(32, 4),
+            callbackUrl: malformed,
+          ),
+        );
+      });
+    });
+
+    test('normalizes malformed verify-owner callback routes', () async {
+      await expectSanitized((logger) {
+        final malformedAdapter = MyNearWalletAdapter(
+          config: adapter.config,
+          launchUrl: (_) async => true,
+          logger: logger,
+        );
+        return malformedAdapter.verifyOwner(
+          message: 'verify',
+          callbackUrl: malformed,
+        );
+      });
     });
   });
 
@@ -1078,4 +1251,44 @@ void main() {
       }
     });
   });
+}
+
+class _BarrierKeyStore implements KeyStore {
+  final InMemoryKeyStore _delegate = InMemoryKeyStore();
+  final Completer<void> _initialReadBarrier = Completer<void>();
+  var _initialReadCount = 0;
+
+  void releaseInitialReads() => _initialReadBarrier.complete();
+
+  @override
+  Future<void> clearPendingKey() => _delegate.clearPendingKey();
+
+  @override
+  Future<List<AccountId>> accounts() => _delegate.accounts();
+
+  @override
+  Future<KeyPairEd25519?> getKey(AccountId accountId) =>
+      _delegate.getKey(accountId);
+
+  @override
+  Future<KeyPairEd25519?> getPendingKey() async {
+    _initialReadCount++;
+    if (_initialReadCount <= 2) await _initialReadBarrier.future;
+    return _delegate.getPendingKey();
+  }
+
+  @override
+  Future<void> removeKey(AccountId accountId) => _delegate.removeKey(accountId);
+
+  @override
+  Future<void> setKey(AccountId accountId, KeyPairEd25519 keyPair) =>
+      _delegate.setKey(accountId, keyPair);
+
+  @override
+  Future<void> setPendingKey(KeyPairEd25519 keyPair) async {
+    await _delegate.setPendingKey(keyPair);
+    if (_initialReadCount > 1) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
 }

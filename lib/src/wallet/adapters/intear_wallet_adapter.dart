@@ -345,7 +345,7 @@ class IntearWalletAdapter {
   Future<KeyPairEd25519> _appKeyFor(AccountId accountId) async {
     final key = await keyStore.getKey(accountId);
     if (key == null) {
-      throw const IntearWalletNotConnectedException();
+      throw IntearWalletNotConnectedException._at(StackTrace.current);
     }
     return key;
   }
@@ -522,13 +522,22 @@ class _IntearWalletFlow {
 class IntearWalletNotConnectedException extends IntearWalletException
     implements StateError {
   const IntearWalletNotConnectedException()
+    : _capturedStackTrace = null,
+      super(
+        'No Intear wallet session is available.',
+        code: NearErrorCode.notConnected,
+      );
+
+  IntearWalletNotConnectedException._at(this._capturedStackTrace)
     : super(
         'No Intear wallet session is available.',
         code: NearErrorCode.notConnected,
       );
 
+  final StackTrace? _capturedStackTrace;
+
   @override
-  StackTrace get stackTrace => StackTrace.current;
+  StackTrace? get stackTrace => _capturedStackTrace;
 }
 
 /// The wallet returned an error (e.g. the user rejected the request).
