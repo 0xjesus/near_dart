@@ -125,8 +125,97 @@ void main() {
 
       expect(
         () => client.getStatus('ih'),
-        throwsA(isA<SolverRelayException>()),
+        throwsA(
+          isA<SolverRelayException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.invalidResponse,
+          ),
+        ),
       );
     });
+
+    test(
+      'logs safe lifecycle events without API key or quote parameters',
+      () async {
+        final events = <NearLogEvent>[];
+        final client = SolverRelayClient(
+          auth: OneClickAuth.xApiKey('test-secret'),
+          logger: events.add,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode({'jsonrpc': '2.0', 'id': 1, 'result': []}),
+              200,
+            ),
+          ),
+        );
+
+        await client.quote(
+          const SolverRelayQuoteRequest(
+            defuseAssetIdentifierIn: 'nep141:wrap.near',
+            defuseAssetIdentifierOut: 'nep141:usdc.near',
+            exactAmountIn: 'test-secret',
+            minDeadlineMs: 60000,
+          ),
+        );
+
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestSucceeded,
+        ]);
+        expect(
+          events.last.metadata['endpoint'],
+          'https://solver-relay-v2.chaindefuser.com',
+        );
+        expect(events.last.metadata['method'], 'POST');
+        expect(events.last.metadata['operation'], 'quote');
+        expect(events.last.metadata['path'], '/rpc');
+        expect(events.last.metadata['statusCode'], 200);
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('test-secret')),
+        );
+      },
+    );
+
+    test(
+      'logs a terminal failure for JSON-RPC errors without API key',
+      () async {
+        final events = <NearLogEvent>[];
+        final client = SolverRelayClient(
+          auth: OneClickAuth.xApiKey('test-secret'),
+          logger: events.add,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': 1,
+                'error': {'code': -32602, 'message': 'private body'},
+              }),
+              200,
+            ),
+          ),
+        );
+
+        await expectLater(
+          client.getStatus('intent-hash'),
+          throwsA(isA<SolverRelayException>()),
+        );
+
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestFailed,
+        ]);
+        expect(events.last.metadata['statusCode'], 200);
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('test-secret')),
+        );
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('private body')),
+        );
+      },
+    );
   });
 }

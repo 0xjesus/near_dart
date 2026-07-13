@@ -118,9 +118,70 @@ void main() {
         throwsA(
           isA<OneClickExplorerApiException>()
               .having((e) => e.statusCode, 'statusCode', 429)
+              .having((e) => e.code, 'code', NearErrorCode.rateLimited)
               .having((e) => e.body, 'body', 'rate limited'),
         ),
       );
     });
+
+    test('logs safe lifecycle events without bearer auth', () async {
+      final events = <NearLogEvent>[];
+      final client = OneClickExplorerClient(
+        auth: OneClickAuth.bearerToken('test-secret'),
+        logger: events.add,
+        httpClient: MockClient((_) async => http.Response('[]', 200)),
+      );
+
+      await client.transactions();
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.intentsRequestStarted,
+        NearLogEventType.intentsRequestSucceeded,
+      ]);
+      expect(
+        events.last.metadata['endpoint'],
+        'https://explorer.near-intents.org',
+      );
+      expect(events.last.metadata['method'], 'GET');
+      expect(events.last.metadata['path'], '/api/v0/transactions');
+      expect(events.last.metadata['statusCode'], 200);
+      expect(
+        events.map((event) => event.toString()).join(),
+        isNot(contains('test-secret')),
+      );
+    });
+
+    test(
+      'logs a terminal failure for HTTP errors without bearer auth',
+      () async {
+        final events = <NearLogEvent>[];
+        final client = OneClickExplorerClient(
+          auth: OneClickAuth.bearerToken('test-secret'),
+          logger: events.add,
+          httpClient: MockClient(
+            (_) async => http.Response('private body', 429),
+          ),
+        );
+
+        await expectLater(
+          client.transactions(),
+          throwsA(isA<OneClickExplorerApiException>()),
+        );
+
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestFailed,
+        ]);
+        expect(events.last.metadata['statusCode'], 429);
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('test-secret')),
+        );
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('private body')),
+        );
+      },
+    );
   });
 }

@@ -64,6 +64,7 @@ class NearRpcClient {
     this.fallbackUrls = const [],
     this.timeout = const Duration(seconds: 30),
     this.network,
+    this.logger,
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
 
@@ -72,12 +73,14 @@ class NearRpcClient {
     NearNetwork network, {
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
+    NearLogger? logger,
   }) {
     return NearRpcClient(
       rpcUrl: network.rpcUrl,
       fallbackUrls: network.fallbackRpcUrls,
       timeout: timeout,
       network: network,
+      logger: logger,
       httpClient: httpClient,
     );
   }
@@ -90,10 +93,12 @@ class NearRpcClient {
   factory NearRpcClient.testnet({
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
+    NearLogger? logger,
   }) {
     return NearRpcClient.forNetwork(
       NearNetwork.testnet,
       timeout: timeout,
+      logger: logger,
       httpClient: httpClient,
     );
   }
@@ -106,10 +111,12 @@ class NearRpcClient {
   factory NearRpcClient.mainnet({
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
+    NearLogger? logger,
   }) {
     return NearRpcClient.forNetwork(
       NearNetwork.mainnet,
       timeout: timeout,
+      logger: logger,
       httpClient: httpClient,
     );
   }
@@ -126,6 +133,9 @@ class NearRpcClient {
 
   /// Typed network metadata, when the client was created from a known network.
   final NearNetwork? network;
+
+  /// Receives safe operational diagnostics for RPC requests.
+  final NearLogger? logger;
 
   final http.Client _httpClient;
 
@@ -170,8 +180,24 @@ class NearRpcClient {
     };
     final body = jsonEncode(requestJson);
 
+    final endpoints = [rpcUrl, ...fallbackUrls];
+    final stopwatch = Stopwatch()..start();
     RpcResult<T>? lastTransportFailure;
-    for (final url in [rpcUrl, ...fallbackUrls]) {
+    int? lastStatusCode;
+
+    _emitRpcEvent(
+      NearLogEventType.rpcRequestStarted,
+      method: method,
+      url: endpoints.first,
+      attempt: 1,
+      endpointCount: endpoints.length,
+      stopwatch: stopwatch,
+    );
+
+    for (var index = 0; index < endpoints.length; index++) {
+      final url = endpoints[index];
+      final attempt = index + 1;
+      lastStatusCode = null;
       try {
         final response = await _httpClient
             .post(
@@ -180,44 +206,161 @@ class NearRpcClient {
               body: body,
             )
             .timeout(timeout);
+        lastStatusCode = response.statusCode;
 
         if (response.statusCode != 200) {
           // Rate limits and server outages: try the next endpoint.
           lastTransportFailure = RpcResult.failure(
             RpcError.http(response.statusCode, response.body),
           );
+          if (index < endpoints.length - 1) {
+            _emitRpcEvent(
+              NearLogEventType.rpcRequestRetried,
+              method: method,
+              url: url,
+              attempt: attempt,
+              endpointCount: endpoints.length,
+              statusCode: response.statusCode,
+              stopwatch: stopwatch,
+            );
+          }
           continue;
         }
 
-        final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
-        final rpcResponse = JsonRpcResponse.fromJson(jsonResponse);
+        try {
+          final jsonResponse =
+              jsonDecode(response.body) as Map<String, dynamic>;
+          final rpcResponse = JsonRpcResponse.fromJson(jsonResponse);
 
-        if (rpcResponse.isError) {
-          // The node answered: its error is the answer, not an outage.
-          return RpcResult.failure(
-            RpcError.fromJsonRpcError(rpcResponse.error!),
+          if (rpcResponse.isError) {
+            // The node answered: its error is the answer, not an outage.
+            final failure = RpcResult<T>.failure(
+              RpcError.fromJsonRpcError(rpcResponse.error!),
+            );
+            _emitRpcEvent(
+              NearLogEventType.rpcRequestFailed,
+              method: method,
+              url: url,
+              attempt: attempt,
+              endpointCount: endpoints.length,
+              statusCode: response.statusCode,
+              stopwatch: stopwatch,
+            );
+            return failure;
+          }
+
+          final success = RpcResult<T>.success(parser(rpcResponse.result));
+          _emitRpcEvent(
+            NearLogEventType.rpcRequestSucceeded,
+            method: method,
+            url: url,
+            attempt: attempt,
+            endpointCount: endpoints.length,
+            statusCode: response.statusCode,
+            stopwatch: stopwatch,
           );
+          return success;
+        } catch (error) {
+          final failure = RpcResult<T>.failure(
+            RpcError.parse('Failed to parse response', error),
+          );
+          _emitRpcEvent(
+            NearLogEventType.rpcRequestFailed,
+            method: method,
+            url: url,
+            attempt: attempt,
+            endpointCount: endpoints.length,
+            statusCode: response.statusCode,
+            stopwatch: stopwatch,
+          );
+          return failure;
         }
-
-        return RpcResult.success(parser(rpcResponse.result));
       } on TimeoutException {
         // A stalled node is a transport failure: try the next endpoint.
         lastTransportFailure = RpcResult.failure(
           RpcError.timeout('Request to $url timed out after $timeout'),
         );
-      } on FormatException catch (e) {
-        return RpcResult.failure(RpcError.parse('Failed to parse response', e));
+        if (index < endpoints.length - 1) {
+          _emitRpcEvent(
+            NearLogEventType.rpcRequestRetried,
+            method: method,
+            url: url,
+            attempt: attempt,
+            endpointCount: endpoints.length,
+            stopwatch: stopwatch,
+          );
+        }
       } on http.ClientException catch (e) {
         lastTransportFailure = RpcResult.failure(
           RpcError.network(e.message, e),
         );
+        if (index < endpoints.length - 1) {
+          _emitRpcEvent(
+            NearLogEventType.rpcRequestRetried,
+            method: method,
+            url: url,
+            attempt: attempt,
+            endpointCount: endpoints.length,
+            stopwatch: stopwatch,
+          );
+        }
       } catch (e) {
         lastTransportFailure = RpcResult.failure(
           RpcError.network('Unknown error: $e', e),
         );
+        if (index < endpoints.length - 1) {
+          _emitRpcEvent(
+            NearLogEventType.rpcRequestRetried,
+            method: method,
+            url: url,
+            attempt: attempt,
+            endpointCount: endpoints.length,
+            stopwatch: stopwatch,
+          );
+        }
       }
     }
-    return lastTransportFailure!;
+    final failure = lastTransportFailure!;
+    _emitRpcEvent(
+      NearLogEventType.rpcRequestFailed,
+      method: method,
+      url: endpoints.last,
+      attempt: endpoints.length,
+      endpointCount: endpoints.length,
+      statusCode: lastStatusCode,
+      stopwatch: stopwatch,
+    );
+    return failure;
+  }
+
+  void _emitRpcEvent(
+    NearLogEventType type, {
+    required String method,
+    required String url,
+    required int attempt,
+    required int endpointCount,
+    required Stopwatch stopwatch,
+    int? statusCode,
+  }) {
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: switch (type) {
+          NearLogEventType.rpcRequestRetried => NearLogLevel.warning,
+          NearLogEventType.rpcRequestFailed => NearLogLevel.error,
+          _ => NearLogLevel.info,
+        },
+        type: type,
+        operation: method,
+        metadata: {
+          'endpoint': Uri.parse(url).origin,
+          'attempt': attempt,
+          'endpointCount': endpointCount,
+          if (statusCode != null) 'statusCode': statusCode,
+          'durationMs': stopwatch.elapsedMilliseconds,
+        },
+      ),
+    );
   }
 
   /// Returns the status of the connected RPC node.
@@ -418,7 +561,8 @@ class NearRpcClient {
 
   /// Returns the status of a transaction.
   ///
-  /// This queries the final execution outcome of a transaction.
+  /// This queries the transaction outcome at [waitUntil], which defaults to
+  /// [TxExecutionStatus.executed].
   ///
   /// Example:
   /// ```dart
@@ -430,11 +574,12 @@ class NearRpcClient {
   Future<RpcResult<TransactionResponse>> txStatus({
     required String transactionHash,
     required AccountId senderAccountId,
+    TxExecutionStatus waitUntil = TxExecutionStatus.executed,
   }) {
     return call('tx', {
       'tx_hash': transactionHash,
       'sender_account_id': senderAccountId.toJson(),
-      'wait_until': 'EXECUTED',
+      'wait_until': waitUntil.rpcValue,
     }, TransactionResponse.fromJson);
   }
 

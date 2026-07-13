@@ -2,19 +2,26 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../diagnostics/near_diagnostics.dart';
+import '../diagnostics/near_errors.dart';
 import 'one_click_auth.dart';
 import 'solver_relay_models.dart';
 
 /// Exception thrown when the solver relay returns an HTTP or JSON-RPC error.
-class SolverRelayException implements Exception {
-  const SolverRelayException(this.message, {this.statusCode, this.body});
+class SolverRelayException extends NearSdkException {
+  SolverRelayException(String message, {this.statusCode, this.body})
+    : super(
+        code: _codeForSolverFailure(statusCode),
+        message: message,
+        retryable: _isRetryableSolverFailure(statusCode),
+      );
 
-  final String message;
   final int? statusCode;
   final String? body;
 
   @override
-  String toString() => 'SolverRelayException: $message';
+  String toString() =>
+      'SolverRelayException(statusCode: $statusCode, code: $code)';
 }
 
 /// JSON-RPC client for the NEAR Intents Message Bus solver relay.
@@ -25,11 +32,13 @@ class SolverRelayClient {
   SolverRelayClient({
     Uri? endpoint,
     OneClickAuth? auth,
+    NearLogger? logger,
     http.Client? httpClient,
   }) : endpoint =
            endpoint ??
            Uri.parse('https://solver-relay-v2.chaindefuser.com/rpc'),
        auth = auth,
+       logger = logger,
        _http = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null;
 
@@ -39,6 +48,9 @@ class SolverRelayClient {
   /// Partner JWT/API key. The relay expects it in `X-API-Key`.
   final OneClickAuth? auth;
 
+  /// Receives safe operational diagnostics for solver relay requests.
+  final NearLogger? logger;
+
   final http.Client _http;
   final bool _ownsHttpClient;
   int _nextId = 1;
@@ -47,7 +59,7 @@ class SolverRelayClient {
   Future<List<SolverRelayQuote>> quote(SolverRelayQuoteRequest request) async {
     final result = await _rpc('quote', [request.toJson()]);
     if (result is! List) {
-      throw const SolverRelayException('Expected quote result list');
+      throw SolverRelayException('Expected quote result list');
     }
     return result
         .cast<Map<String, dynamic>>()
@@ -73,37 +85,87 @@ class SolverRelayClient {
 
   Future<dynamic> _rpc(String method, List<Map<String, dynamic>> params) async {
     final id = _nextId++;
-    final response = await _http.post(
-      endpoint,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        ...?auth?.headers,
-      },
-      body: jsonEncode({
-        'jsonrpc': '2.0',
-        'id': id,
-        'method': method,
-        'params': params,
-      }),
+    final stopwatch = Stopwatch()..start();
+    _emitRequestEvent(
+      NearLogEventType.intentsRequestStarted,
+      operation: method,
+      stopwatch: stopwatch,
     );
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw SolverRelayException(
-        'HTTP ${response.statusCode}',
-        statusCode: response.statusCode,
-        body: response.body,
+    http.Response? response;
+    try {
+      response = await _http.post(
+        endpoint,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          ...?auth?.headers,
+        },
+        body: jsonEncode({
+          'jsonrpc': '2.0',
+          'id': id,
+          'method': method,
+          'params': params,
+        }),
       );
-    }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw SolverRelayException(
+          'Solver relay request failed with HTTP ${response.statusCode}',
+          statusCode: response.statusCode,
+          body: response.body,
+        );
+      }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    if (decoded['error'] != null) {
-      throw SolverRelayException(
-        'JSON-RPC error: ${decoded['error']}',
-        body: response.body,
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      if (decoded['error'] != null) {
+        throw SolverRelayException(
+          'Solver relay JSON-RPC request failed',
+          body: response.body,
+        );
+      }
+      _emitRequestEvent(
+        NearLogEventType.intentsRequestSucceeded,
+        operation: method,
+        statusCode: response.statusCode,
+        stopwatch: stopwatch,
       );
+      return decoded['result'];
+    } catch (_) {
+      _emitRequestEvent(
+        NearLogEventType.intentsRequestFailed,
+        operation: method,
+        statusCode: response?.statusCode,
+        stopwatch: stopwatch,
+      );
+      rethrow;
     }
-    return decoded['result'];
+  }
+
+  void _emitRequestEvent(
+    NearLogEventType type, {
+    required String operation,
+    required Stopwatch stopwatch,
+    int? statusCode,
+  }) {
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: switch (type) {
+          NearLogEventType.intentsRequestFailed => NearLogLevel.error,
+          _ => NearLogLevel.info,
+        },
+        type: type,
+        operation: operation,
+        metadata: {
+          'endpoint': endpoint.origin,
+          'method': 'POST',
+          'operation': operation,
+          'path': endpoint.path,
+          if (statusCode != null) 'statusCode': statusCode,
+          'durationMs': stopwatch.elapsedMilliseconds,
+        },
+      ),
+    );
   }
 
   Map<String, dynamic> _asObject(dynamic value) {
@@ -116,4 +178,16 @@ class SolverRelayClient {
   void close() {
     if (_ownsHttpClient) _http.close();
   }
+}
+
+NearErrorCode _codeForSolverFailure(int? statusCode) {
+  if (statusCode == 429) return NearErrorCode.rateLimited;
+  if (statusCode != null && statusCode >= 500) {
+    return NearErrorCode.rpcUnavailable;
+  }
+  return NearErrorCode.invalidResponse;
+}
+
+bool _isRetryableSolverFailure(int? statusCode) {
+  return statusCode == 429 || (statusCode != null && statusCode >= 500);
 }

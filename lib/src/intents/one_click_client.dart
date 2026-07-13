@@ -2,34 +2,50 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../diagnostics/near_diagnostics.dart';
+import '../diagnostics/near_errors.dart';
 import 'intent_signing.dart';
 import 'one_click_auth.dart';
 import 'one_click_models.dart';
 
 /// Exception thrown when the 1Click API returns a non-2xx response.
-class OneClickApiException implements Exception {
-  const OneClickApiException(this.statusCode, this.body);
+class OneClickApiException extends NearSdkException {
+  OneClickApiException(this.statusCode, this.body)
+    : super(
+        code: _codeForHttpStatus(statusCode),
+        message: '1Click API request failed with HTTP $statusCode',
+        retryable: _isRetryableHttpStatus(statusCode),
+      );
 
   final int statusCode;
   final String body;
 
   @override
-  String toString() => 'OneClickApiException($statusCode): $body';
+  String toString() =>
+      'OneClickApiException(statusCode: $statusCode, code: $code)';
 }
 
 /// REST client for the NEAR Intents 1Click API.
 class OneClickClient {
-  OneClickClient({Uri? baseUri, OneClickAuth? auth, http.Client? httpClient})
-    : baseUri = baseUri ?? Uri.parse('https://1click.chaindefuser.com'),
-      auth = auth,
-      _http = httpClient ?? http.Client(),
-      _ownsHttpClient = httpClient == null;
+  OneClickClient({
+    Uri? baseUri,
+    OneClickAuth? auth,
+    NearLogger? logger,
+    http.Client? httpClient,
+  }) : baseUri = baseUri ?? Uri.parse('https://1click.chaindefuser.com'),
+       auth = auth,
+       logger = logger,
+       _http = httpClient ?? http.Client(),
+       _ownsHttpClient = httpClient == null;
 
   /// Base API URI. Defaults to `https://1click.chaindefuser.com`.
   final Uri baseUri;
 
   /// Optional partner auth.
   final OneClickAuth? auth;
+
+  /// Receives safe operational diagnostics for 1Click requests.
+  final NearLogger? logger;
 
   final http.Client _http;
   final bool _ownsHttpClient;
@@ -156,12 +172,72 @@ class OneClickClient {
     Map<String, String>? query,
     Map<String, dynamic>? body,
   }) async {
-    final response = await _send(method, _uri(path, query), body: body);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OneClickApiException(response.statusCode, response.body);
+    final uri = _uri(path, query);
+    final stopwatch = Stopwatch()..start();
+    _emitRequestEvent(
+      NearLogEventType.intentsRequestStarted,
+      method: method,
+      operation: path,
+      uri: uri,
+      stopwatch: stopwatch,
+    );
+
+    http.Response? response;
+    try {
+      response = await _send(method, uri, body: body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw OneClickApiException(response.statusCode, response.body);
+      }
+      final result = response.body.isEmpty ? null : jsonDecode(response.body);
+      _emitRequestEvent(
+        NearLogEventType.intentsRequestSucceeded,
+        method: method,
+        operation: path,
+        uri: uri,
+        statusCode: response.statusCode,
+        stopwatch: stopwatch,
+      );
+      return result;
+    } catch (_) {
+      _emitRequestEvent(
+        NearLogEventType.intentsRequestFailed,
+        method: method,
+        operation: path,
+        uri: uri,
+        statusCode: response?.statusCode,
+        stopwatch: stopwatch,
+      );
+      rethrow;
     }
-    if (response.body.isEmpty) return null;
-    return jsonDecode(response.body);
+  }
+
+  void _emitRequestEvent(
+    NearLogEventType type, {
+    required String method,
+    required String operation,
+    required Uri uri,
+    required Stopwatch stopwatch,
+    int? statusCode,
+  }) {
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: switch (type) {
+          NearLogEventType.intentsRequestFailed => NearLogLevel.error,
+          _ => NearLogLevel.info,
+        },
+        type: type,
+        operation: operation,
+        metadata: {
+          'endpoint': uri.origin,
+          'method': method,
+          'operation': operation,
+          'path': uri.path,
+          if (statusCode != null) 'statusCode': statusCode,
+          'durationMs': stopwatch.elapsedMilliseconds,
+        },
+      ),
+    );
   }
 
   Future<http.Response> _send(
@@ -207,4 +283,14 @@ class OneClickClient {
   void close() {
     if (_ownsHttpClient) _http.close();
   }
+}
+
+NearErrorCode _codeForHttpStatus(int statusCode) {
+  if (statusCode == 429) return NearErrorCode.rateLimited;
+  if (statusCode >= 500) return NearErrorCode.rpcUnavailable;
+  return NearErrorCode.invalidResponse;
+}
+
+bool _isRetryableHttpStatus(int statusCode) {
+  return statusCode == 429 || statusCode >= 500;
 }

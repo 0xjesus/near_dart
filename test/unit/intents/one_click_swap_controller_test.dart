@@ -153,7 +153,10 @@ void main() {
         throwsA(isA<OneClickApiException>()),
       );
       expect(controller.state.stage, OneClickSwapStage.failed);
-      expect(controller.state.error, contains('bad quote'));
+      expect(
+        controller.state.error,
+        'OneClickApiException(statusCode: 400, code: NearErrorCode.invalidResponse)',
+      );
     });
   });
 }

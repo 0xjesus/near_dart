@@ -310,9 +310,75 @@ void main() {
         throwsA(
           isA<OneClickApiException>()
               .having((e) => e.statusCode, 'statusCode', 429)
+              .having((e) => e.code, 'code', NearErrorCode.rateLimited)
               .having((e) => e.body, 'body', 'rate limited'),
         ),
       );
     });
+
+    test(
+      'logs safe lifecycle events without auth or request contents',
+      () async {
+        final events = <NearLogEvent>[];
+        final client = OneClickClient(
+          auth: OneClickAuth.bearerToken('test-secret'),
+          logger: events.add,
+          httpClient: MockClient(
+            (_) async => http.Response(jsonEncode([]), 200),
+          ),
+        );
+
+        await client.tokens();
+
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestSucceeded,
+        ]);
+        expect(
+          events.last.metadata['endpoint'],
+          'https://1click.chaindefuser.com',
+        );
+        expect(events.last.metadata['method'], 'GET');
+        expect(events.last.metadata['path'], '/v0/tokens');
+        expect(events.last.metadata['statusCode'], 200);
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('test-secret')),
+        );
+      },
+    );
+
+    test(
+      'logs a terminal failure for HTTP errors without auth contents',
+      () async {
+        final events = <NearLogEvent>[];
+        final client = OneClickClient(
+          auth: OneClickAuth.bearerToken('test-secret'),
+          logger: events.add,
+          httpClient: MockClient(
+            (_) async => http.Response('private body', 429),
+          ),
+        );
+
+        await expectLater(
+          client.tokens(),
+          throwsA(isA<OneClickApiException>()),
+        );
+
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestFailed,
+        ]);
+        expect(events.last.metadata['statusCode'], 429);
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('test-secret')),
+        );
+        expect(
+          events.map((event) => event.toString()).join(),
+          isNot(contains('private body')),
+        );
+      },
+    );
   });
 }

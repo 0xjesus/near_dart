@@ -2,18 +2,26 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../diagnostics/near_diagnostics.dart';
+import '../diagnostics/near_errors.dart';
 import 'one_click_auth.dart';
 import 'one_click_models.dart';
 
 /// Exception thrown when the NEAR Intents Explorer API returns non-2xx.
-class OneClickExplorerApiException implements Exception {
-  const OneClickExplorerApiException(this.statusCode, this.body);
+class OneClickExplorerApiException extends NearSdkException {
+  OneClickExplorerApiException(this.statusCode, this.body)
+    : super(
+        code: _codeForExplorerHttpStatus(statusCode),
+        message: 'Explorer API request failed with HTTP $statusCode',
+        retryable: _isRetryableExplorerHttpStatus(statusCode),
+      );
 
   final int statusCode;
   final String body;
 
   @override
-  String toString() => 'OneClickExplorerApiException($statusCode): $body';
+  String toString() =>
+      'OneClickExplorerApiException(statusCode: $statusCode, code: $code)';
 }
 
 /// Cursor direction for Explorer transaction pagination.
@@ -242,10 +250,12 @@ class OneClickExplorerClient {
   OneClickExplorerClient({
     Uri? baseUri,
     OneClickAuth? auth,
+    NearLogger? logger,
     http.Client? httpClient,
   }) : baseUri =
            baseUri ?? Uri.parse('https://explorer.near-intents.org/api/v0'),
        auth = auth,
+       logger = logger,
        _http = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null;
 
@@ -255,6 +265,9 @@ class OneClickExplorerClient {
   /// JWT auth. Explorer requires `Authorization: Bearer ...` in production.
   final OneClickAuth? auth;
 
+  /// Receives safe operational diagnostics for Explorer API requests.
+  final NearLogger? logger;
+
   final http.Client _http;
   final bool _ownsHttpClient;
 
@@ -262,27 +275,90 @@ class OneClickExplorerClient {
   Future<List<OneClickExplorerTransaction>> transactions([
     OneClickExplorerTransactionsRequest? request,
   ]) async {
-    final response = await _http.get(
-      _uri('/transactions', request?.toQueryParametersAll() ?? const {}),
-      headers: {'Accept': 'application/json', ...?auth?.headers},
+    const method = 'GET';
+    const operation = '/transactions';
+    final uri = _uri(operation, request?.toQueryParametersAll() ?? const {});
+    final stopwatch = Stopwatch()..start();
+    _emitRequestEvent(
+      NearLogEventType.intentsRequestStarted,
+      method: method,
+      operation: operation,
+      uri: uri,
+      stopwatch: stopwatch,
     );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OneClickExplorerApiException(response.statusCode, response.body);
+
+    http.Response? response;
+    try {
+      response = await _http.get(
+        uri,
+        headers: {'Accept': 'application/json', ...?auth?.headers},
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw OneClickExplorerApiException(response.statusCode, response.body);
+      }
+      final decoded = response.body.isEmpty
+          ? const []
+          : jsonDecode(response.body);
+      if (decoded is! List) {
+        throw const FormatException('Expected Explorer transactions list');
+      }
+      final transactions = decoded
+          .whereType<Map>()
+          .map(
+            (json) => OneClickExplorerTransaction.fromJson(
+              json.cast<String, dynamic>(),
+            ),
+          )
+          .toList();
+      _emitRequestEvent(
+        NearLogEventType.intentsRequestSucceeded,
+        method: method,
+        operation: operation,
+        uri: uri,
+        statusCode: response.statusCode,
+        stopwatch: stopwatch,
+      );
+      return transactions;
+    } catch (_) {
+      _emitRequestEvent(
+        NearLogEventType.intentsRequestFailed,
+        method: method,
+        operation: operation,
+        uri: uri,
+        statusCode: response?.statusCode,
+        stopwatch: stopwatch,
+      );
+      rethrow;
     }
-    final decoded = response.body.isEmpty
-        ? const []
-        : jsonDecode(response.body);
-    if (decoded is! List) {
-      throw const FormatException('Expected Explorer transactions list');
-    }
-    return decoded
-        .whereType<Map>()
-        .map(
-          (json) => OneClickExplorerTransaction.fromJson(
-            json.cast<String, dynamic>(),
-          ),
-        )
-        .toList();
+  }
+
+  void _emitRequestEvent(
+    NearLogEventType type, {
+    required String method,
+    required String operation,
+    required Uri uri,
+    required Stopwatch stopwatch,
+    int? statusCode,
+  }) {
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: switch (type) {
+          NearLogEventType.intentsRequestFailed => NearLogLevel.error,
+          _ => NearLogLevel.info,
+        },
+        type: type,
+        operation: operation,
+        metadata: {
+          'endpoint': uri.origin,
+          'method': method,
+          'operation': operation,
+          'path': uri.path,
+          if (statusCode != null) 'statusCode': statusCode,
+          'durationMs': stopwatch.elapsedMilliseconds,
+        },
+      ),
+    );
   }
 
   Uri _uri(String path, Map<String, List<String>> queryParametersAll) {
@@ -301,6 +377,16 @@ class OneClickExplorerClient {
   void close() {
     if (_ownsHttpClient) _http.close();
   }
+}
+
+NearErrorCode _codeForExplorerHttpStatus(int statusCode) {
+  if (statusCode == 429) return NearErrorCode.rateLimited;
+  if (statusCode >= 500) return NearErrorCode.rpcUnavailable;
+  return NearErrorCode.invalidResponse;
+}
+
+bool _isRetryableExplorerHttpStatus(int statusCode) {
+  return statusCode == 429 || statusCode >= 500;
 }
 
 DateTime? _tryParseDate(Object? value) =>
