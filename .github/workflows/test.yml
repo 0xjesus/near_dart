@@ -175,6 +175,12 @@ jobs:
         run: dart test --platform chrome test/platform/web_test.dart --reporter=expanded
         timeout-minutes: 5
 
+      - name: Compile SDK smoke test with dart2js
+        run: dart compile js -O1 tool/web_compile_smoke.dart -o "$RUNNER_TEMP/near_dart.js"
+
+      - name: Compile SDK smoke test with dart2wasm
+        run: dart compile wasm tool/web_compile_smoke.dart -o "$RUNNER_TEMP/near_dart.wasm"
+
   # The OpenAPI-generated JSON-RPC client package: analyze, prove the
   # generator reproduces the committed output, and verify it runs on web.
   jsonrpc-client:
@@ -309,7 +315,8 @@ jobs:
 
   example-windows:
     name: Example builds (Windows)
-    runs-on: windows-latest
+    # flutter_inappwebview 6.1.5 fails on VS 2026. Track upstream #2839.
+    runs-on: windows-2022
     needs: unit-tests
     steps:
       - uses: actions/checkout@v4

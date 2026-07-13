@@ -53,6 +53,16 @@ cd ../packages/near_wallet_connect/example
 flutter build apk --debug
 ```
 
+## CI Workflow Coverage
+
+The required CI workflow builds the example on Windows Server 2022, Linux,
+and macOS, and runs the SDK's Chrome platform tests. The Chrome job also
+compiles `tool/web_compile_smoke.dart` with both `dart2js` and `dart2wasm`.
+
+The manual **Release Check** workflow runs on relevant package and changelog
+pull requests. It performs analysis, tests, and `dart pub publish --dry-run`
+for each published package; it does not publish packages.
+
 ## Publish Order
 
 1. Publish `near_dart`.
@@ -62,4 +72,3 @@ flutter build apk --debug
 5. Record device demos for wallet-visible changes.
 
 Publishing requires explicit owner approval every time.
-

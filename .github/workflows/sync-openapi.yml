@@ -12,6 +12,9 @@ jobs:
   sync:
     name: Regenerate from upstream spec
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     defaults:
       run:
         working-directory: packages/near_jsonrpc_client
