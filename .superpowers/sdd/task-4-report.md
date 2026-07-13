@@ -126,4 +126,4 @@ MyNearWallet, Intear, and HOT Wallet. Commit: `b8e4525`.
 
 ### Commit
 
-- Fix commit SHA is recorded by the follow-up documentation commit below.
+- `8f7e3f5a16b61894b7e89214e879a208f0f44b8d`
