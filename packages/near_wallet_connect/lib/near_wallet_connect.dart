@@ -19,6 +19,12 @@ export 'package:near_dart/near_dart.dart'
         MyNearWalletNetwork,
         NearRpcClient,
         TxExecutionStatus,
+        NearErrorCode,
+        NearSdkException,
+        NearLogger,
+        NearLogEvent,
+        NearLogLevel,
+        NearLogEventType,
         Nep413Payload,
         Nep413SignedMessage,
         IntearWalletAdapter,
@@ -30,4 +36,5 @@ export 'src/near_connect_button.dart';
 export 'src/near_wallet_controller.dart';
 export 'src/secure_key_store.dart';
 export 'src/shared_prefs_key_store.dart';
+export 'src/wallet_security.dart';
 export 'src/wallet_option.dart';

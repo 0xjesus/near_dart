@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:near_dart/near_dart.dart'
+    show AccessKeyView, BlockReference, PublicKey, RpcResult;
 import 'package:near_wallet_connect/near_wallet_connect.dart';
 
 void main() {
@@ -84,4 +86,83 @@ void main() {
       findsOneWidget,
     );
   });
+
+  test('controller uses its resolved client for default security', () {
+    final client = _CountingNearRpcClient();
+    final controller = NearWalletController(
+      network: MyNearWalletNetwork.testnet,
+      contractId: AccountId('app.testnet'),
+      client: client,
+    );
+
+    expect(controller.security.client, same(client));
+  });
+
+  test('controller passes its logger to the default RPC client', () {
+    void logger(NearLogEvent event) {}
+
+    final controller = NearWalletController(
+      network: MyNearWalletNetwork.testnet,
+      contractId: AccountId('app.testnet'),
+      logger: logger,
+    );
+
+    expect(controller.logger, same(logger));
+    expect(controller.client.logger, same(logger));
+  });
+
+  test(
+    'default policy does not verify and HOT testnet is wrongNetwork',
+    () async {
+      final client = _CountingNearRpcClient();
+      final controller = NearWalletController(
+        network: MyNearWalletNetwork.testnet,
+        contractId: AccountId('app.testnet'),
+        client: client,
+      );
+
+      await controller.connect(wallet: NearWalletOption.hot);
+
+      expect(client.accessKeyCalls, 0);
+      expect(controller.error, contains('not available'));
+      expect(controller.lastException?.code, NearErrorCode.wrongNetwork);
+      expect(controller.error, controller.lastException?.message);
+    },
+  );
+
+  test('disconnected operations expose typed compatible errors', () async {
+    final controller = NearWalletController(
+      network: MyNearWalletNetwork.testnet,
+      contractId: AccountId('app.testnet'),
+    );
+
+    await expectLater(
+      controller.sendTransactions(const []),
+      throwsA(
+        isA<NearSdkException>().having(
+          (error) => error.code,
+          'code',
+          NearErrorCode.notConnected,
+        ),
+      ),
+    );
+    expect(controller.lastException?.code, NearErrorCode.notConnected);
+    expect(controller.error, controller.lastException?.message);
+  });
+}
+
+class _CountingNearRpcClient extends NearRpcClient {
+  _CountingNearRpcClient() : super(rpcUrl: 'https://rpc.invalid');
+
+  int accessKeyCalls = 0;
+
+  @override
+  Future<RpcResult<AccessKeyView>> viewAccessKey({
+    required AccountId accountId,
+    required PublicKey publicKey,
+    required BlockReference blockReference,
+  }) async {
+    accessKeyCalls++;
+    throw StateError('Unexpected verification call');
+  }
 }

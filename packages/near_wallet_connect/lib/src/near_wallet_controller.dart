@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'secure_key_store.dart';
 import 'shared_prefs_key_store.dart';
+import 'wallet_security.dart';
 import 'wallet_option.dart';
 
 /// One controller for every supported NEAR wallet.
@@ -46,13 +47,18 @@ class NearWalletController extends ChangeNotifier {
     this.appOrigin,
     KeyStore? keyStore,
     NearRpcClient? client,
+    this.securityPolicy = const NearWalletSecurityPolicy(),
+    NearWalletSecurity? security,
+    this.logger,
   }) : keyStore =
            keyStore ?? (kIsWeb ? SharedPrefsKeyStore() : SecureKeyStore()),
        client =
            client ??
            (network == MyNearWalletNetwork.mainnet
-               ? NearRpcClient.mainnet()
-               : NearRpcClient.testnet());
+               ? NearRpcClient.mainnet(logger: logger)
+               : NearRpcClient.testnet(logger: logger)) {
+    this.security = security ?? NearWalletSecurity(this.client);
+  }
 
   /// Which network to connect to.
   final MyNearWalletNetwork network;
@@ -80,13 +86,23 @@ class NearWalletController extends ChangeNotifier {
   /// RPC client used for local signing after connect.
   final NearRpcClient client;
 
+  /// Opt-in on-chain verification and confirmation behavior.
+  final NearWalletSecurityPolicy securityPolicy;
+
+  /// Service used to perform on-chain wallet checks.
+  late final NearWalletSecurity security;
+
+  /// Receives safe structured diagnostics from wallet and RPC operations.
+  final NearLogger? logger;
+
   static const _optionPrefsKey = 'near_wallet_connect_option';
   static const _hotAccountPrefsKey = 'near_wallet_connect_hot_account';
+  static const _hotPublicKeyPrefsKey = 'near_wallet_connect_hot_public_key';
 
   WalletAccount? _account;
   NearWalletOption? _walletOption;
   bool _busy = false;
-  String? _error;
+  NearSdkException? _lastException;
   AppLinks? _appLinks;
   StreamSubscription<Uri>? _linkSub;
 
@@ -103,7 +119,10 @@ class NearWalletController extends ChangeNotifier {
   bool get busy => _busy;
 
   /// The last error message, if any.
-  String? get error => _error;
+  String? get error => _lastException?.message;
+
+  /// The last normalized SDK error, if any.
+  NearSdkException? get lastException => _lastException;
 
   /// The wallets available on [network].
   List<NearWalletOption> get availableWallets =>
@@ -133,6 +152,7 @@ class NearWalletController extends ChangeNotifier {
       ),
       keyStore: keyStore,
       launchUrl: _launch,
+      logger: logger,
     );
   }
 
@@ -145,11 +165,13 @@ class NearWalletController extends ChangeNotifier {
     ),
     keyStore: keyStore,
     launchUrl: _launch,
+    logger: logger,
   );
 
   HotWalletAdapter _hotAdapter() => HotWalletAdapter(
     config: HotWalletConfig(origin: appOrigin ?? '$callbackScheme://app'),
     launchUrl: _launch,
+    logger: logger,
   );
 
   // ── lifecycle ────────────────────────────────────────────────────────────
@@ -186,10 +208,11 @@ class NearWalletController extends ChangeNotifier {
 
     if (_walletOption == NearWalletOption.hot) {
       final accountId = prefs.getString(_hotAccountPrefsKey);
-      if (accountId != null) {
+      final publicKey = prefs.getString(_hotPublicKeyPrefsKey);
+      if (accountId != null && publicKey != null) {
         _account = WalletAccount(
           accountId: AccountId(accountId),
-          publicKey: PublicKey('ed25519:11111111111111111111111111111111'),
+          publicKey: PublicKey(publicKey),
         );
         notifyListeners();
       }
@@ -219,13 +242,16 @@ class NearWalletController extends ChangeNotifier {
     NearWalletOption wallet = NearWalletOption.myNearWallet,
   }) async {
     if (!availableWallets.contains(wallet)) {
-      _set(
+      _setException(
+        NearSdkException(
+          code: NearErrorCode.wrongNetwork,
+          message: '${wallet.label} is not available on $_networkId',
+        ),
         busy: false,
-        error: '${wallet.label} is not available on $_networkId',
       );
       return;
     }
-    _set(busy: true, error: null);
+    _set(busy: true, clearException: true);
     try {
       switch (wallet) {
         case NearWalletOption.myNearWallet:
@@ -237,30 +263,79 @@ class NearWalletController extends ChangeNotifier {
         // On web the page navigates away here; the result arrives in init().
         case NearWalletOption.intear:
           final result = await _intearAdapter().signIn();
+          await _verifyNewAccount(
+            result.account,
+            requireFunctionCallScope: true,
+            removeStoredKeyOnFailure: true,
+            clearPersistedSessionOnFailure: false,
+          );
           _account = result.account;
           _walletOption = wallet;
           await _saveOption(wallet);
           _set(busy: false);
+          _logConnected(wallet);
         case NearWalletOption.hot:
           final account = await _hotAdapter().signIn();
+          await _verifyNewAccount(
+            account,
+            requireFunctionCallScope: false,
+            removeStoredKeyOnFailure: false,
+            clearPersistedSessionOnFailure: false,
+          );
           _account = account;
           _walletOption = wallet;
-          await _saveOption(wallet, hotAccountId: account.accountId.value);
+          await _saveOption(
+            wallet,
+            hotAccountId: account.accountId.value,
+            hotPublicKey: account.publicKey.value,
+          );
           _set(busy: false);
+          _logConnected(wallet);
       }
-    } catch (e) {
-      _set(busy: false, error: '$e');
+    } catch (error) {
+      _setException(_normalizeControllerError(error), busy: false);
     }
   }
 
   Future<void> _saveOption(
     NearWalletOption option, {
     String? hotAccountId,
+    String? hotPublicKey,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_optionPrefsKey, option.name);
     if (hotAccountId != null) {
       await prefs.setString(_hotAccountPrefsKey, hotAccountId);
+    }
+    if (hotPublicKey != null) {
+      await prefs.setString(_hotPublicKeyPrefsKey, hotPublicKey);
+    }
+  }
+
+  Future<void> _verifyNewAccount(
+    WalletAccount account, {
+    required bool requireFunctionCallScope,
+    required bool removeStoredKeyOnFailure,
+    required bool clearPersistedSessionOnFailure,
+  }) async {
+    if (!securityPolicy.verifyAccessKeyOnConnect) return;
+    try {
+      await security.verifyAccessKey(
+        account: account,
+        contractId: contractId,
+        methodNames: methodNames,
+        requireFunctionCallScope: requireFunctionCallScope,
+      );
+    } catch (_) {
+      if (removeStoredKeyOnFailure) {
+        await keyStore.removeKey(account.accountId);
+      }
+      if (clearPersistedSessionOnFailure) {
+        await _clearPersistedSession();
+      }
+      _account = null;
+      _walletOption = null;
+      rethrow;
     }
   }
 
@@ -272,19 +347,37 @@ class NearWalletController extends ChangeNotifier {
     final signInPending = await keyStore.getPendingKey() != null;
     if (!signInPending && _account != null) return;
 
-    _set(busy: true);
+    _set(busy: true, clearException: true);
     try {
       final account = await _mnwAdapter().completeSignIn(uri);
       if (account != null) {
+        await _verifyNewAccount(
+          account,
+          requireFunctionCallScope: true,
+          removeStoredKeyOnFailure: true,
+          clearPersistedSessionOnFailure: true,
+        );
         _account = account;
         _walletOption = NearWalletOption.myNearWallet;
         await _saveOption(NearWalletOption.myNearWallet);
         _set(busy: false);
+        _logConnected(NearWalletOption.myNearWallet);
       } else {
-        _set(busy: false, error: signInPending ? 'Sign-in cancelled' : null);
+        if (signInPending) {
+          await _clearPersistedSession();
+          _setException(
+            const NearSdkException(
+              code: NearErrorCode.cancelled,
+              message: 'Sign-in cancelled',
+            ),
+            busy: false,
+          );
+        } else {
+          _set(busy: false, clearException: true);
+        }
       }
-    } catch (e) {
-      _set(busy: false, error: '$e');
+    } catch (error) {
+      _setException(_normalizeControllerError(error), busy: false);
     }
   }
 
@@ -292,12 +385,27 @@ class NearWalletController extends ChangeNotifier {
   Future<void> disconnect() async {
     final account = _account;
     if (account != null) await keyStore.removeKey(account.accountId);
+    await _clearPersistedSession();
+    _account = null;
+    _walletOption = null;
+    _lastException = null;
+    notifyListeners();
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: NearLogLevel.info,
+        type: NearLogEventType.walletDisconnected,
+        operation: 'disconnect',
+        metadata: {'networkId': _networkId},
+      ),
+    );
+  }
+
+  Future<void> _clearPersistedSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_optionPrefsKey);
     await prefs.remove(_hotAccountPrefsKey);
-    _account = null;
-    _walletOption = null;
-    notifyListeners();
+    await prefs.remove(_hotPublicKeyPrefsKey);
   }
 
   // ── the unified API ──────────────────────────────────────────────────────
@@ -309,29 +417,42 @@ class NearWalletController extends ChangeNotifier {
   /// cannot attach deposits — use [sendTransactions] for payments.
   Future<Account?> signer() async {
     final a = _account;
-    if (a == null) return null;
+    if (a == null) {
+      _setException(_notConnectedException);
+      return null;
+    }
     final kp = await keyStore.getKey(a.accountId);
     if (kp == null) return null;
+    _set(clearException: true);
     return Account(accountId: a.accountId, keyPair: kp, client: client);
   }
 
   /// Signs a NEP-413 message with the user's wallet key (Intear, HOT).
   Future<Nep413SignedMessage> signMessage(Nep413Payload payload) async {
     final a = _account;
-    if (a == null) throw StateError('Connect a wallet first');
-    switch (_walletOption) {
-      case NearWalletOption.intear:
-        return _intearAdapter().signMessage(
-          accountId: a.accountId,
-          payload: payload,
-        );
-      case NearWalletOption.hot:
-        return _hotAdapter().signMessage(payload: payload);
-      default:
-        throw UnsupportedError(
-          'MyNearWallet signs messages via browser redirect — use '
-          'MyNearWalletAdapter.buildSignMessageUrl for that flow.',
-        );
+    if (a == null) return _throwControllerError(_notConnectedException);
+    _set(clearException: true);
+    try {
+      switch (_walletOption) {
+        case NearWalletOption.intear:
+          return await _intearAdapter().signMessage(
+            accountId: a.accountId,
+            payload: payload,
+          );
+        case NearWalletOption.hot:
+          return await _hotAdapter().signMessage(payload: payload);
+        default:
+          throw const NearSdkException(
+            code: NearErrorCode.unsupportedOperation,
+            message:
+                'MyNearWallet signs messages via browser redirect; use '
+                'MyNearWalletAdapter.buildSignMessageUrl for that flow.',
+          );
+      }
+    } catch (error, stackTrace) {
+      final exception = _normalizeControllerError(error);
+      _setException(exception);
+      Error.throwWithStackTrace(exception, stackTrace);
     }
   }
 
@@ -344,29 +465,138 @@ class NearWalletController extends ChangeNotifier {
     List<Map<String, dynamic>> transactions,
   ) async {
     final a = _account;
-    if (a == null) throw StateError('Connect a wallet first');
-    switch (_walletOption) {
-      case NearWalletOption.intear:
-        return _intearAdapter().signAndSendTransactions(
-          accountId: a.accountId,
-          transactions: transactions,
+    if (a == null) return _throwControllerError(_notConnectedException);
+    _set(clearException: true);
+    try {
+      final List<dynamic> outcomes;
+      switch (_walletOption) {
+        case NearWalletOption.intear:
+          outcomes = await _intearAdapter().signAndSendTransactions(
+            accountId: a.accountId,
+            transactions: transactions,
+          );
+        case NearWalletOption.hot:
+          outcomes = await _hotAdapter().signAndSendTransactions(
+            transactions: transactions,
+          );
+        default:
+          throw const NearSdkException(
+            code: NearErrorCode.unsupportedOperation,
+            message:
+                'MyNearWallet signs transactions via browser redirect; use '
+                'MyNearWalletAdapter.buildTransactionUrl for that flow, or '
+                'signer() for gas-only calls with the function-call key.',
+          );
+      }
+
+      final finality = securityPolicy.transactionFinality;
+      if (finality != null) {
+        await security.confirmTransactions(
+          senderAccountId: a.accountId,
+          outcomes: outcomes,
+          waitUntil: finality,
         );
-      case NearWalletOption.hot:
-        return _hotAdapter().signAndSendTransactions(
-          transactions: transactions,
+        emitNearLog(
+          logger,
+          NearLogEvent(
+            level: NearLogLevel.info,
+            type: NearLogEventType.transactionFinalized,
+            operation: 'sendTransactions',
+            metadata: {
+              'networkId': _networkId,
+              'transactionCount': outcomes.length,
+              'waitUntil': finality.rpcValue,
+            },
+          ),
         );
-      default:
-        throw UnsupportedError(
-          'MyNearWallet signs transactions via browser redirect — use '
-          'MyNearWalletAdapter.buildTransactionUrl for that flow, or '
-          'signer() for gas-only calls with the function-call key.',
-        );
+      }
+      return outcomes;
+    } catch (error, stackTrace) {
+      final exception = _normalizeControllerError(error);
+      _setException(exception);
+      Error.throwWithStackTrace(exception, stackTrace);
     }
   }
 
-  void _set({bool? busy, String? error}) {
+  static const _notConnectedException = NearSdkException(
+    code: NearErrorCode.notConnected,
+    message: 'Connect a wallet first',
+  );
+
+  Never _throwControllerError(NearSdkException exception) {
+    _setException(exception);
+    throw exception;
+  }
+
+  NearSdkException _normalizeControllerError(Object error) {
+    if (error is NearSdkException) return error;
+    final normalized = nearErrorFrom(error);
+    final message = switch (normalized.code) {
+      NearErrorCode.deepLinkUnavailable =>
+        'The wallet app could not be opened.',
+      NearErrorCode.userRejected => 'The wallet request was rejected.',
+      NearErrorCode.walletResponseInvalid || NearErrorCode.invalidResponse =>
+        'The wallet returned an invalid response.',
+      NearErrorCode.accountMismatch =>
+        'The wallet returned an unexpected account.',
+      NearErrorCode.signatureVerificationFailed =>
+        'The wallet signature could not be verified.',
+      NearErrorCode.missingCallback => 'The wallet callback was missing.',
+      NearErrorCode.cancelled => 'The wallet operation was cancelled.',
+      NearErrorCode.rpcTimeout => 'The wallet RPC request timed out.',
+      NearErrorCode.rpcUnavailable => 'The wallet RPC endpoint is unavailable.',
+      NearErrorCode.rateLimited => 'The wallet RPC request was rate-limited.',
+      NearErrorCode.accessKeyNotFound =>
+        'The wallet access key was not found on chain.',
+      NearErrorCode.accessKeyMismatch =>
+        'The wallet access key does not match the required scope.',
+      NearErrorCode.transactionFailed => 'The wallet transaction failed.',
+      NearErrorCode.insufficientBalance =>
+        'The wallet has insufficient balance for this operation.',
+      NearErrorCode.unsupportedOperation =>
+        'This wallet does not support the requested operation.',
+      NearErrorCode.notConnected => 'Connect a wallet first',
+      NearErrorCode.wrongNetwork =>
+        'The selected wallet is not available on this network.',
+      NearErrorCode.invalidInput => 'The wallet request was invalid.',
+      NearErrorCode.unknown => 'The wallet operation failed.',
+    };
+    return NearSdkException(
+      code: normalized.code,
+      message: message,
+      retryable: normalized.retryable,
+    );
+  }
+
+  void _logConnected(NearWalletOption wallet) {
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: NearLogLevel.info,
+        type: NearLogEventType.walletConnected,
+        operation: 'connect',
+        metadata: {'wallet': wallet.name, 'networkId': _networkId},
+      ),
+    );
+  }
+
+  void _setException(NearSdkException exception, {bool? busy}) {
+    _lastException = exception;
+    _set(busy: busy);
+    emitNearLog(
+      logger,
+      NearLogEvent(
+        level: NearLogLevel.error,
+        type: NearLogEventType.walletFlowFailed,
+        operation: 'walletController',
+        metadata: {'code': exception.code.name, 'networkId': _networkId},
+      ),
+    );
+  }
+
+  void _set({bool? busy, bool clearException = false}) {
     if (busy != null) _busy = busy;
-    _error = error;
+    if (clearException) _lastException = null;
     notifyListeners();
   }
 
