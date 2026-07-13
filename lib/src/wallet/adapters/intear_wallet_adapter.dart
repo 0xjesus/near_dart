@@ -112,7 +112,7 @@ class IntearWalletAdapter {
   Future<IntearConnectionResult> signIn({
     Nep413Payload? messageToSign,
     String? state,
-  }) => _runWalletFlow('signIn', () async {
+  }) => _runWalletFlow('signIn', (flow) async {
     final appKey = await KeyPairEd25519.generate();
 
     // V2 connect message: `origin` is required by the wallet;
@@ -145,6 +145,7 @@ class IntearWalletAdapter {
       type: 'signIn',
       data: data,
       successType: 'connected',
+      flow: flow,
     );
     final accountId = _connectedAccount(response);
     final signed = messageToSign == null
@@ -177,7 +178,7 @@ class IntearWalletAdapter {
     required AccountId accountId,
     required Nep413Payload payload,
     String? state,
-  }) => _runWalletFlow('signMessage', () async {
+  }) => _runWalletFlow('signMessage', (flow) async {
     final appKey = await _appKeyFor(accountId);
     final message = _nep413Json(payload, state);
     final nonce = DateTime.now().millisecondsSinceEpoch;
@@ -193,6 +194,7 @@ class IntearWalletAdapter {
         'signature': await _signRequest(appKey, nonce, message),
       },
       successType: 'signed',
+      flow: flow,
     );
 
     return (await _verifiedSignedMessage(
@@ -269,30 +271,30 @@ class IntearWalletAdapter {
 
   Future<T> _runWalletFlow<T>(
     String operation,
-    Future<T> Function() action,
+    Future<T> Function(_IntearWalletFlow flow) action,
   ) async {
-    final stopwatch = Stopwatch()..start();
+    final flow = _IntearWalletFlow(operation);
     _emitWalletEvent(
       NearLogEventType.walletFlowOpened,
       operation: operation,
-      stopwatch: stopwatch,
+      stopwatch: flow.stopwatch,
       outcome: 'opened',
     );
     try {
-      final result = await action();
+      final result = await action(flow);
       _emitWalletEvent(
-        NearLogEventType.walletCallbackReceived,
+        NearLogEventType.walletFlowSucceeded,
         operation: operation,
-        stopwatch: stopwatch,
+        stopwatch: flow.stopwatch,
         outcome: 'success',
       );
       return result;
     } catch (error, stackTrace) {
       final normalized = _normalizeIntearError(error);
       _emitWalletEvent(
-        NearLogEventType.walletCallbackReceived,
+        NearLogEventType.walletFlowFailed,
         operation: operation,
-        stopwatch: stopwatch,
+        stopwatch: flow.stopwatch,
         outcome: 'failure',
         failureCode: normalized.code,
       );
@@ -308,7 +310,7 @@ class IntearWalletAdapter {
   Future<List<dynamic>> signAndSendTransactions({
     required AccountId accountId,
     required List<Map<String, dynamic>> transactions,
-  }) => _runWalletFlow('signAndSendTransactions', () async {
+  }) => _runWalletFlow('signAndSendTransactions', (flow) async {
     final appKey = await _appKeyFor(accountId);
     final txJson = jsonEncode(transactions);
     final nonce = DateTime.now().millisecondsSinceEpoch;
@@ -325,6 +327,7 @@ class IntearWalletAdapter {
         'mode': 'Send',
       },
       successType: 'sent',
+      flow: flow,
     );
 
     final outcomes = response['outcomes'] ?? const <dynamic>[];
@@ -374,6 +377,7 @@ class IntearWalletAdapter {
     required String type,
     required Map<String, dynamic> data,
     required String successType,
+    required _IntearWalletFlow flow,
   }) async {
     WebSocketChannel? channel;
     try {
@@ -412,6 +416,7 @@ class IntearWalletAdapter {
       if (!await messages.moveNext().timeout(config.responseTimeout)) {
         throw const IntearWalletException.transport();
       }
+      _callbackReceived(flow);
       late final Map<String, dynamic> response;
       try {
         final current = messages.current;
@@ -428,7 +433,9 @@ class IntearWalletAdapter {
         }
         if (normalized.contains('reject') ||
             normalized.contains('declin') ||
-            normalized.contains('cancel')) {
+            normalized.contains('cancel') ||
+            normalized.contains('denied') ||
+            normalized.contains('deny')) {
           throw const IntearWalletException.rejected();
         }
         throw const IntearWalletException.invalidResponse();
@@ -468,6 +475,17 @@ class IntearWalletAdapter {
     return const IntearWalletException.unknown();
   }
 
+  void _callbackReceived(_IntearWalletFlow flow) {
+    if (flow.callbackReceived) return;
+    flow.callbackReceived = true;
+    _emitWalletEvent(
+      NearLogEventType.walletCallbackReceived,
+      operation: flow.operation,
+      stopwatch: flow.stopwatch,
+      outcome: 'received',
+    );
+  }
+
   void _emitWalletEvent(
     NearLogEventType type, {
     required String operation,
@@ -492,6 +510,14 @@ class IntearWalletAdapter {
   }
 }
 
+class _IntearWalletFlow {
+  _IntearWalletFlow(this.operation) : stopwatch = (Stopwatch()..start());
+
+  final String operation;
+  final Stopwatch stopwatch;
+  bool callbackReceived = false;
+}
+
 /// No app key is stored for the requested Intear account.
 class IntearWalletNotConnectedException extends IntearWalletException
     implements StateError {
@@ -502,7 +528,7 @@ class IntearWalletNotConnectedException extends IntearWalletException
       );
 
   @override
-  StackTrace? get stackTrace => null;
+  StackTrace get stackTrace => StackTrace.current;
 }
 
 /// The wallet returned an error (e.g. the user rejected the request).

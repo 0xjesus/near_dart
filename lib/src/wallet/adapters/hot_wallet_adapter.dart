@@ -71,8 +71,12 @@ class HotWalletAdapter {
   final http.Client _http;
 
   /// Asks HOT Wallet for the connected account.
-  Future<WalletAccount> signIn() => _runWalletFlow('signIn', () async {
-    final payload = await _request('near:signIn', const <String, dynamic>{});
+  Future<WalletAccount> signIn() => _runWalletFlow('signIn', (flow) async {
+    final payload = await _request(
+      'near:signIn',
+      const <String, dynamic>{},
+      flow,
+    );
     return WalletAccount(
       accountId: _accountId(payload['accountId']),
       publicKey: _publicKey(payload['publicKey']),
@@ -81,13 +85,13 @@ class HotWalletAdapter {
 
   /// Signs a NEP-413 message with the user's wallet key.
   Future<Nep413SignedMessage> signMessage({required Nep413Payload payload}) =>
-      _runWalletFlow('signMessage', () async {
+      _runWalletFlow('signMessage', (flow) async {
         final res = await _request('near:signMessage', {
           'message': payload.message,
           'nonce': payload.nonce,
           'recipient': payload.recipient,
           if (payload.callbackUrl != null) 'callbackUrl': payload.callbackUrl,
-        });
+        }, flow);
         final signed = _signedMessage(res);
         try {
           if (!await verifyNep413Signature(payload: payload, signed: signed)) {
@@ -135,10 +139,10 @@ class HotWalletAdapter {
   /// `[{"receiverId": ..., "actions": [...]}]`). Returns the outcomes.
   Future<List<dynamic>> signAndSendTransactions({
     required List<Map<String, dynamic>> transactions,
-  }) => _runWalletFlow('signAndSendTransactions', () async {
+  }) => _runWalletFlow('signAndSendTransactions', (flow) async {
     final res = await _request('near:signAndSendTransactions', {
       'transactions': transactions,
-    });
+    }, flow);
     final outcomes = res['transactions'] ?? const <dynamic>[];
     if (outcomes is! List) {
       throw const HotWalletException.invalidResponse();
@@ -149,20 +153,26 @@ class HotWalletAdapter {
   // ── internals ────────────────────────────────────────────────────────────
 
   /// Relay clock (falls back to the local clock).
-  Future<int> _timestampMs() async {
+  Future<int> _timestampMs(_HotWalletFlow flow) async {
     try {
-      final res = await _http
-          .get(Uri.parse(config.timeUrl))
-          .timeout(const Duration(seconds: 10));
+      final timeout = _remaining(flow);
+      final res = await _http.get(Uri.parse(config.timeUrl)).timeout(timeout);
       final ts = BigInt.parse('${(jsonDecode(res.body) as Map)['ts']}');
       return (ts ~/ BigInt.from(10).pow(12)).toInt() * 1000;
+    } on HotWalletException {
+      rethrow;
     } catch (_) {
+      _remaining(flow);
       return DateTime.now().millisecondsSinceEpoch;
     }
   }
 
-  Future<Map<String, dynamic>> _request(String method, Object request) async {
-    final ts = await _timestampMs();
+  Future<Map<String, dynamic>> _request(
+    String method,
+    Object request,
+    _HotWalletFlow flow,
+  ) async {
+    final ts = await _timestampMs(flow);
     final query = base58Encode(
       utf8.encode(
         jsonEncode({
@@ -179,13 +189,16 @@ class HotWalletAdapter {
 
     late final http.Response created;
     try {
+      final timeout = _remaining(flow);
       created = await _http
           .post(
             Uri.parse('${config.proxyUrl}/$requestId/request'),
             headers: {'content-type': 'application/json'},
             body: jsonEncode({'data': query}),
           )
-          .timeout(config.responseTimeout);
+          .timeout(timeout);
+    } on HotWalletException {
+      rethrow;
     } on TimeoutException {
       throw const HotWalletException.timeout();
     } catch (_) {
@@ -197,7 +210,14 @@ class HotWalletAdapter {
 
     late final bool launched;
     try {
-      launched = await launchUrl(Uri.parse('hotwallet://hotcall-$requestId'));
+      final timeout = _remaining(flow);
+      launched = await launchUrl(
+        Uri.parse('hotwallet://hotcall-$requestId'),
+      ).timeout(timeout);
+    } on HotWalletException {
+      rethrow;
+    } on TimeoutException {
+      throw const HotWalletException.timeout();
     } catch (_) {
       throw const HotWalletException.deepLink();
     }
@@ -205,23 +225,30 @@ class HotWalletAdapter {
       throw const HotWalletException.deepLink();
     }
 
-    final deadline = DateTime.now().add(config.responseTimeout);
-    while (DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(config.pollInterval);
+    while (true) {
+      final beforeDelay = _remaining(flow);
+      final delay = config.pollInterval < beforeDelay
+          ? config.pollInterval
+          : beforeDelay;
+      await Future<void>.delayed(delay);
       late final http.Response res;
       try {
+        final timeout = _remaining(flow);
         res = await _http
             .get(
               Uri.parse('${config.proxyUrl}/$requestId/response'),
               headers: {'content-type': 'application/json'},
             )
-            .timeout(config.responseTimeout);
+            .timeout(timeout);
+      } on HotWalletException {
+        rethrow;
       } on TimeoutException {
         throw const HotWalletException.timeout();
       } catch (_) {
         throw const HotWalletException.transport();
       }
       if (res.statusCode == 204 || res.statusCode == 404) continue;
+      _callbackReceived(flow);
       if (res.statusCode != 200) throw _relayHttpFailure(res.statusCode);
       final data = _decodeRelayResponse(res.body);
       if (data['success'] == true) {
@@ -241,7 +268,14 @@ class HotWalletAdapter {
       }
       throw const HotWalletException.invalidResponse();
     }
-    throw const HotWalletException.timeout();
+  }
+
+  Duration _remaining(_HotWalletFlow flow) {
+    final remaining = config.responseTimeout - flow.stopwatch.elapsed;
+    if (remaining <= Duration.zero) {
+      throw const HotWalletException.timeout();
+    }
+    return remaining;
   }
 
   Map<String, dynamic> _decodeRelayResponse(String body) {
@@ -259,6 +293,7 @@ class HotWalletAdapter {
   }
 
   HotWalletException _relayHttpFailure(int statusCode) {
+    if (statusCode == 408) return const HotWalletException.timeout();
     if (statusCode == 429) return const HotWalletException.rateLimited();
     if (statusCode >= 500) return const HotWalletException.transport();
     return const HotWalletException.invalidResponse();
@@ -266,30 +301,30 @@ class HotWalletAdapter {
 
   Future<T> _runWalletFlow<T>(
     String operation,
-    Future<T> Function() action,
+    Future<T> Function(_HotWalletFlow flow) action,
   ) async {
-    final stopwatch = Stopwatch()..start();
+    final flow = _HotWalletFlow(operation);
     _emitWalletEvent(
       NearLogEventType.walletFlowOpened,
       operation: operation,
-      stopwatch: stopwatch,
+      stopwatch: flow.stopwatch,
       outcome: 'opened',
     );
     try {
-      final result = await action();
+      final result = await action(flow);
       _emitWalletEvent(
-        NearLogEventType.walletCallbackReceived,
+        NearLogEventType.walletFlowSucceeded,
         operation: operation,
-        stopwatch: stopwatch,
+        stopwatch: flow.stopwatch,
         outcome: 'success',
       );
       return result;
     } catch (error, stackTrace) {
       final normalized = _normalizeHotError(error);
       _emitWalletEvent(
-        NearLogEventType.walletCallbackReceived,
+        NearLogEventType.walletFlowFailed,
         operation: operation,
-        stopwatch: stopwatch,
+        stopwatch: flow.stopwatch,
         outcome: 'failure',
         failureCode: normalized.code,
       );
@@ -309,6 +344,17 @@ class HotWalletAdapter {
       return const HotWalletException.invalidResponse();
     }
     return const HotWalletException.unknown();
+  }
+
+  void _callbackReceived(_HotWalletFlow flow) {
+    if (flow.callbackReceived) return;
+    flow.callbackReceived = true;
+    _emitWalletEvent(
+      NearLogEventType.walletCallbackReceived,
+      operation: flow.operation,
+      stopwatch: flow.stopwatch,
+      outcome: 'received',
+    );
   }
 
   void _emitWalletEvent(
@@ -344,6 +390,14 @@ class HotWalletAdapter {
         '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
         '${hex.substring(20)}';
   }
+}
+
+class _HotWalletFlow {
+  _HotWalletFlow(this.operation) : stopwatch = (Stopwatch()..start());
+
+  final String operation;
+  final Stopwatch stopwatch;
+  bool callbackReceived = false;
 }
 
 /// The wallet returned an error (e.g. the user rejected the request).

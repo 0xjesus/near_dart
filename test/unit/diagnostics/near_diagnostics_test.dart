@@ -2,6 +2,11 @@ import 'package:near_dart/near_dart.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('defines explicit wallet flow terminal events', () {
+    expect(NearLogEventType.walletFlowSucceeded.name, 'walletFlowSucceeded');
+    expect(NearLogEventType.walletFlowFailed.name, 'walletFlowFailed');
+  });
+
   test('redacts sensitive metadata recursively', () {
     final event = NearLogEvent(
       level: NearLogLevel.info,

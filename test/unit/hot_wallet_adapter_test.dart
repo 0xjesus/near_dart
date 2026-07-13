@@ -18,9 +18,12 @@ class FakeRelay {
   final launchedUris = <Uri>[];
   int requestStatus = 200;
   String requestErrorBody = '';
+  Duration requestDelay = Duration.zero;
   bool serveResponse = true;
   int responseStatus = 200;
   String? rawResponseBody;
+  Duration responseDelay = Duration.zero;
+  int responseRequests = 0;
 
   /// The decoded request queued by the adapter.
   Map<String, dynamic>? lastRequest;
@@ -48,6 +51,9 @@ class FakeRelay {
           }),
         );
       } else if (parts.length == 2 && parts[1] == 'request') {
+        if (relay.requestDelay > Duration.zero) {
+          await Future<void>.delayed(relay.requestDelay);
+        }
         if (relay.requestStatus >= 300) {
           req.response.statusCode = relay.requestStatus;
           req.response.write(relay.requestErrorBody);
@@ -66,6 +72,10 @@ class FakeRelay {
           'data': jsonEncode(relay.respond(request)),
         });
       } else if (parts.length == 2 && parts[1] == 'response') {
+        relay.responseRequests++;
+        if (relay.responseDelay > Duration.zero) {
+          await Future<void>.delayed(relay.responseDelay);
+        }
         final queued = relay._responses[parts[0]];
         if (!relay.serveResponse || queued == null) {
           req.response.statusCode = 404;
@@ -278,10 +288,11 @@ void main() {
   });
 
   test('surfaces a wallet rejection', () async {
+    final events = <NearLogEvent>[];
     relay.respond = (_) => {'success': false, 'payload': 'User rejected'};
 
-    expect(
-      () => adapter().signIn(),
+    await expectLater(
+      adapter(logger: events.add).signIn(),
       throwsA(
         isA<HotWalletException>()
             .having((error) => error.code, 'code', NearErrorCode.userRejected)
@@ -290,6 +301,26 @@ void main() {
               'safe error',
               isNot(contains('User rejected')),
             ),
+      ),
+    );
+    expect(events.map((event) => event.type), [
+      NearLogEventType.walletFlowOpened,
+      NearLogEventType.walletCallbackReceived,
+      NearLogEventType.walletFlowFailed,
+    ]);
+  });
+
+  test('maps relay HTTP 408 to rpcTimeout', () async {
+    relay.requestStatus = 408;
+
+    await expectLater(
+      adapter().signIn(),
+      throwsA(
+        isA<NearSdkException>().having(
+          (error) => error.code,
+          'code',
+          NearErrorCode.rpcTimeout,
+        ),
       ),
     );
   });
@@ -313,6 +344,7 @@ void main() {
   });
 
   test('types deep-link failures', () async {
+    final events = <NearLogEvent>[];
     launchResult = false;
     relay.respond = (_) => {
       'success': true,
@@ -323,7 +355,7 @@ void main() {
     };
 
     await expectLater(
-      adapter().signIn(),
+      adapter(logger: events.add).signIn(),
       throwsA(
         isA<NearSdkException>().having(
           (error) => error.code,
@@ -332,6 +364,10 @@ void main() {
         ),
       ),
     );
+    expect(events.map((event) => event.type), [
+      NearLogEventType.walletFlowOpened,
+      NearLogEventType.walletFlowFailed,
+    ]);
   });
 
   test('types wallet response timeouts', () async {
@@ -350,6 +386,62 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('does not poll when poll interval reaches the hard deadline', () async {
+    relay.respond = (_) => {
+      'success': true,
+      'payload': {
+        'accountId': 'alice.near',
+        'publicKey': 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+      },
+    };
+    final stopwatch = Stopwatch()..start();
+
+    await expectLater(
+      adapter(
+        pollInterval: const Duration(milliseconds: 80),
+        responseTimeout: const Duration(milliseconds: 30),
+      ).signIn(),
+      throwsA(
+        isA<NearSdkException>().having(
+          (error) => error.code,
+          'code',
+          NearErrorCode.rpcTimeout,
+        ),
+      ),
+    );
+
+    expect(relay.responseRequests, 0);
+    expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 75)));
+  });
+
+  test('caps a stalled final GET to the remaining deadline', () async {
+    relay.requestDelay = const Duration(milliseconds: 200);
+    relay.responseDelay = const Duration(seconds: 2);
+    final stopwatch = Stopwatch()..start();
+
+    await expectLater(
+      adapter(
+        pollInterval: const Duration(milliseconds: 5),
+        responseTimeout: const Duration(milliseconds: 500),
+      ).signIn(),
+      throwsA(
+        isA<NearSdkException>().having(
+          (error) => error.code,
+          'code',
+          NearErrorCode.rpcTimeout,
+        ),
+      ),
+    );
+
+    expect(
+      stopwatch.elapsed,
+      lessThan(const Duration(milliseconds: 600)),
+      reason:
+          'polls=${relay.responseRequests} launched=${relay.launchedUris.length}',
+    );
+    expect(relay.responseRequests, 1);
   });
 
   test('types malformed relay responses', () async {
@@ -387,6 +479,7 @@ void main() {
     expect(events.map((event) => event.type), [
       NearLogEventType.walletFlowOpened,
       NearLogEventType.walletCallbackReceived,
+      NearLogEventType.walletFlowSucceeded,
     ]);
     for (final event in events) {
       expect(event.operation, 'signIn');

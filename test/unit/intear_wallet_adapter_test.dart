@@ -174,7 +174,7 @@ void main() {
     );
 
     test('surfaces a wallet error (user rejection)', () async {
-      bridge.respond = (_) => {'type': 'error', 'message': 'User rejected'};
+      bridge.respond = (_) => {'type': 'error', 'message': 'User denied'};
 
       expect(
         () => adapter().signIn(),
@@ -347,6 +347,7 @@ void main() {
         message: 'Sign in to app.com',
         recipient: 'app.com',
         nonce: List<int>.generate(32, (i) => i),
+        callbackUrl: 'https://example.app/auth/callback',
       );
       final walletSignature = await signNep413Message(
         payload: payload,
@@ -380,6 +381,7 @@ void main() {
       expect(nep413['recipient'], 'app.com');
       expect(nep413['nonce'], payload.nonce);
       expect(nep413['callback_url'], isNull);
+      expect(nep413['callbackUrl'], 'https://example.app/auth/callback');
       expect(
         await verifyRequestSignature(data, data['message'] as String),
         isTrue,
@@ -458,18 +460,138 @@ void main() {
       );
     });
 
+    test('rejects every signed NEP-413 payload field mutation', () async {
+      final walletKey = await KeyPairEd25519.generate();
+      final payload = Nep413Payload(
+        message: 'Approve login',
+        recipient: 'app.com',
+        nonce: List<int>.filled(32, 6),
+        callbackUrl: 'https://example.app/callback',
+      );
+      final mutations = <Nep413Payload>[
+        Nep413Payload(
+          message: 'Approve another login',
+          recipient: payload.recipient,
+          nonce: payload.nonce,
+          callbackUrl: payload.callbackUrl,
+        ),
+        Nep413Payload(
+          message: payload.message,
+          recipient: 'evil.example',
+          nonce: payload.nonce,
+          callbackUrl: payload.callbackUrl,
+        ),
+        Nep413Payload(
+          message: payload.message,
+          recipient: payload.recipient,
+          nonce: List<int>.filled(32, 7),
+          callbackUrl: payload.callbackUrl,
+        ),
+        Nep413Payload(
+          message: payload.message,
+          recipient: payload.recipient,
+          nonce: payload.nonce,
+          callbackUrl: 'https://evil.example/callback',
+        ),
+      ];
+
+      for (final mutation in mutations) {
+        final signed = await signNep413Message(
+          payload: mutation,
+          keyPair: walletKey,
+          accountId: AccountId('alice.testnet'),
+        );
+        bridge.respond = (_) => {
+          'type': 'signed',
+          'signature': {
+            'accountId': signed.accountId.value,
+            'publicKey': signed.publicKey.value,
+            'signature': signed.signature,
+          },
+        };
+
+        await expectLater(
+          adapter().signMessage(
+            accountId: AccountId('alice.testnet'),
+            payload: payload,
+          ),
+          throwsA(
+            isA<NearSdkException>().having(
+              (error) => error.code,
+              'code',
+              NearErrorCode.signatureVerificationFailed,
+            ),
+          ),
+          reason: mutation.toString(),
+        );
+      }
+    });
+
+    test('rejects malformed signed-message fields safely', () async {
+      final payload = Nep413Payload(
+        message: 'Approve login',
+        recipient: 'app.com',
+        nonce: List<int>.filled(32, 8),
+      );
+      final malformed = <Map<String, Object?>>[
+        {'accountId': null, 'publicKey': 'x', 'signature': 'x'},
+        {'accountId': 1, 'publicKey': 'x', 'signature': 'x'},
+        {'accountId': '', 'publicKey': 'x', 'signature': 'x'},
+        {'accountId': 'alice.testnet', 'publicKey': null, 'signature': 'x'},
+        {'accountId': 'alice.testnet', 'publicKey': 1, 'signature': 'x'},
+        {'accountId': 'alice.testnet', 'publicKey': '', 'signature': 'x'},
+        {
+          'accountId': 'alice.testnet',
+          'publicKey': 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          'signature': null,
+        },
+        {
+          'accountId': 'alice.testnet',
+          'publicKey': 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          'signature': 1,
+        },
+        {
+          'accountId': 'alice.testnet',
+          'publicKey': 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
+          'signature': '',
+        },
+      ];
+
+      for (final fields in malformed) {
+        bridge.respond = (_) => {'type': 'signed', 'signature': fields};
+        await expectLater(
+          adapter().signMessage(
+            accountId: AccountId('alice.testnet'),
+            payload: payload,
+          ),
+          throwsA(
+            isA<NearSdkException>().having(
+              (error) => error.code,
+              'code',
+              NearErrorCode.walletResponseInvalid,
+            ),
+          ),
+        );
+      }
+    });
+
     test('throws without a prior session', () async {
-      expect(
-        () => adapter().signMessage(
+      late Object thrown;
+      try {
+        await adapter().signMessage(
           accountId: AccountId('stranger.testnet'),
           payload: Nep413Payload(
             message: 'm',
             recipient: 'r',
             nonce: List.filled(32, 0),
           ),
-        ),
-        throwsStateError,
-      );
+        );
+        fail('expected signMessage to throw');
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<StateError>());
+      expect((thrown as StateError).stackTrace, isNotNull);
     });
   });
 
@@ -535,6 +657,7 @@ void main() {
 
   group('failures and diagnostics', () {
     test('types deep-link failures without exposing the link', () async {
+      final events = <NearLogEvent>[];
       launchResult = false;
       bridge.respond = (_) => {
         'type': 'connected',
@@ -544,7 +667,7 @@ void main() {
       };
 
       await expectLater(
-        adapter().signIn(),
+        adapter(logger: events.add).signIn(),
         throwsA(
           isA<NearSdkException>()
               .having(
@@ -559,6 +682,10 @@ void main() {
               ),
         ),
       );
+      expect(events.map((event) => event.type), [
+        NearLogEventType.walletFlowOpened,
+        NearLogEventType.walletFlowFailed,
+      ]);
     });
 
     test('emits only safe wallet lifecycle metadata', () async {
@@ -575,6 +702,7 @@ void main() {
       expect(events.map((event) => event.type), [
         NearLogEventType.walletFlowOpened,
         NearLogEventType.walletCallbackReceived,
+        NearLogEventType.walletFlowSucceeded,
       ]);
       for (final event in events) {
         expect(event.operation, 'signIn');

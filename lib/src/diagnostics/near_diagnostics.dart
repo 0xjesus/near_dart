@@ -60,6 +60,12 @@ enum NearLogEventType {
   /// A wallet callback was received.
   walletCallbackReceived,
 
+  /// A wallet flow completed successfully.
+  walletFlowSucceeded,
+
+  /// A wallet flow failed.
+  walletFlowFailed,
+
   /// A wallet was connected.
   walletConnected,
 

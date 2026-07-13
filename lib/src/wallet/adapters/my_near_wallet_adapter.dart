@@ -101,8 +101,7 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// in-memory store; provide a persistent one for the web redirect flow.
   final KeyStore keyStore;
 
-  WalletAccount? _account;
-  final Map<String, DateTime> _flowStartedAt = <String, DateTime>{};
+  _PendingMyNearWalletFlow? _pendingFlow;
 
   @override
   String get id => 'my-near-wallet';
@@ -146,7 +145,15 @@ class MyNearWalletAdapter implements WalletAdapter {
     required AccountId contractId,
     List<String>? methodNames,
   }) async {
-    _openWalletFlow('signIn');
+    if (_pendingFlow != null || await keyStore.getPendingKey() != null) {
+      throw const MyNearWalletException.flowInProgress();
+    }
+    _openWalletFlow(
+      'signIn',
+      successUrl: config.successUrl,
+      failureUrl: config.failureUrl,
+    );
+    final flow = _pendingFlow!;
     try {
       // The pending key survives the redirect; only its public half is sent.
       final keyPair = await KeyPairEd25519.generate();
@@ -160,7 +167,7 @@ class MyNearWalletAdapter implements WalletAdapter {
         throw const MyNearWalletException.deepLink();
       }
       // The wallet redirects back; [completeSignIn] resolves the account.
-      return const <WalletAccount>[];
+      return <WalletAccount>[];
     } catch (error, stackTrace) {
       try {
         await keyStore.clearPendingKey();
@@ -168,7 +175,7 @@ class MyNearWalletAdapter implements WalletAdapter {
         // Preserve the original wallet-flow failure.
       }
       final normalized = _normalizeMyNearError(error);
-      _finishWalletFlow('signIn', failureCode: normalized.code);
+      _finishWalletFlow(flow, failureCode: normalized.code);
       Error.throwWithStackTrace(normalized, stackTrace);
     }
   }
@@ -183,15 +190,32 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// Call this on app start (web: the initial URL) or when a deep link
   /// arrives (mobile).
   Future<WalletAccount?> completeSignIn(Uri callbackUri) async {
+    final pendingKey = await keyStore.getPendingKey();
+    if (_pendingFlow == null && pendingKey != null) {
+      _openWalletFlow(
+        'signIn',
+        successUrl: config.successUrl,
+        failureUrl: config.failureUrl,
+      );
+    }
+    final flow = _pendingFlow;
+    if (flow == null || flow.operation != 'signIn') return null;
+
+    final isSuccessRoute = _matchesCallbackRoute(callbackUri, flow.successUrl);
+    final isFailureRoute =
+        flow.failureUrl != null &&
+        _matchesCallbackRoute(callbackUri, flow.failureUrl!);
+    if (!isSuccessRoute && !isFailureRoute) return null;
+
+    _callbackReceived(flow);
     NearErrorCode? failureCode;
     try {
-      // Only configured redirect URLs may complete a sign-in.
-      if (!_matchesConfiguredCallback(callbackUri)) {
-        failureCode = NearErrorCode.walletResponseInvalid;
+      final callback = MyNearWalletCallback.fromUri(callbackUri);
+      if (isFailureRoute) {
+        failureCode = NearErrorCode.userRejected;
+        await keyStore.clearPendingKey();
         return null;
       }
-
-      final callback = MyNearWalletCallback.fromUri(callbackUri);
       if (!callback.isSuccess || callback.accountId == null) {
         failureCode = callback.isError
             ? NearErrorCode.userRejected
@@ -200,7 +224,7 @@ class MyNearWalletAdapter implements WalletAdapter {
         return null;
       }
 
-      final pending = await keyStore.getPendingKey();
+      final pending = pendingKey ?? await keyStore.getPendingKey();
       if (pending == null) {
         failureCode = NearErrorCode.missingCallback;
         return null;
@@ -228,14 +252,13 @@ class MyNearWalletAdapter implements WalletAdapter {
         accountId: accountId,
         publicKey: pending.publicKey,
       );
-      _account = account;
       return account;
     } catch (error, stackTrace) {
       final normalized = _normalizeMyNearError(error);
       failureCode = normalized.code;
       Error.throwWithStackTrace(normalized, stackTrace);
     } finally {
-      _finishWalletFlow('signIn', failureCode: failureCode);
+      _finishWalletFlow(flow, failureCode: failureCode);
     }
   }
 
@@ -244,30 +267,41 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// Prefer [completeSignIn] for the sign-in flow; this is for inspecting a
   /// raw callback (e.g. transaction-result callbacks).
   MyNearWalletCallback handleCallback(Uri callbackUri) {
+    final flow = _pendingFlow;
+    if (flow == null || flow.operation != 'verifyOwner') {
+      try {
+        return MyNearWalletCallback.fromUri(callbackUri);
+      } catch (error, stackTrace) {
+        final normalized = _normalizeMyNearError(error);
+        Error.throwWithStackTrace(normalized, stackTrace);
+      }
+    }
+    if (!_matchesCallbackRoute(callbackUri, flow.successUrl)) {
+      throw const MyNearWalletCallbackException();
+    }
+
+    _callbackReceived(flow);
+    NearErrorCode? failureCode;
     try {
       final callback = MyNearWalletCallback.fromUri(callbackUri);
-      _finishWalletFlow('callback');
+      if (callback.isError) failureCode = NearErrorCode.userRejected;
       return callback;
     } catch (error, stackTrace) {
       final normalized = _normalizeMyNearError(error);
-      _finishWalletFlow('callback', failureCode: normalized.code);
+      failureCode = normalized.code;
       Error.throwWithStackTrace(normalized, stackTrace);
+    } finally {
+      _finishWalletFlow(flow, failureCode: failureCode);
     }
   }
 
-  /// Whether [uri] lands on the configured success or failure URL
-  /// (scheme, host, port and path — query and fragment are the payload).
-  bool _matchesConfiguredCallback(Uri uri) {
-    bool matches(String configured) {
-      final c = Uri.parse(configured);
-      String norm(String p) => p.isEmpty ? '/' : p;
-      return uri.scheme == c.scheme &&
-          uri.host == c.host &&
-          uri.port == c.port &&
-          norm(uri.path) == norm(c.path);
-    }
-
-    return matches(config.successUrl) || matches(config.failureUrl);
+  bool _matchesCallbackRoute(Uri uri, String configured) {
+    final expected = Uri.parse(configured);
+    String normalizedPath(String path) => path.isEmpty ? '/' : path;
+    return uri.scheme == expected.scheme &&
+        uri.host == expected.host &&
+        uri.port == expected.port &&
+        normalizedPath(uri.path) == normalizedPath(expected.path);
   }
 
   @override
@@ -276,7 +310,7 @@ class MyNearWalletAdapter implements WalletAdapter {
       await keyStore.removeKey(accountId);
     }
     await keyStore.clearPendingKey();
-    _account = null;
+    _pendingFlow = null;
   }
 
   @override
@@ -339,7 +373,11 @@ class MyNearWalletAdapter implements WalletAdapter {
       callbackUrl: callbackUrl,
     );
 
-    await _launchWalletFlow('signAndSendTransaction', uri);
+    await _launchWalletFlow(
+      'signAndSendTransaction',
+      uri,
+      successUrl: callbackUrl ?? config.successUrl,
+    );
 
     // Result will come from callback handling
     throw const _PendingCallbackException(
@@ -358,7 +396,11 @@ class MyNearWalletAdapter implements WalletAdapter {
       callbackUrl: callbackUrl,
     );
 
-    await _launchWalletFlow('signAndSendTransactions', uri);
+    await _launchWalletFlow(
+      'signAndSendTransactions',
+      uri,
+      successUrl: callbackUrl ?? config.successUrl,
+    );
 
     throw const _PendingCallbackException(
       'Transaction results must be parsed from callback URL. '
@@ -368,40 +410,70 @@ class MyNearWalletAdapter implements WalletAdapter {
 
   /// Handles a transaction callback from MyNearWallet.
   List<TransactionResult> handleTransactionCallback(Uri callbackUri) {
-    final callback = MyNearWalletCallback.fromUri(callbackUri);
-    final operation = _flowStartedAt.containsKey('signAndSendTransaction')
-        ? 'signAndSendTransaction'
-        : 'signAndSendTransactions';
-
-    if (callback.isError) {
-      _finishWalletFlow(operation, failureCode: NearErrorCode.userRejected);
-      return [
-        TransactionResult(
-          transactionHash: const CryptoHash(''),
-          outcome: ExecutionOutcome(
-            status: ExecutionStatus.failure(
-              const ExecutionError(
-                errorType: 'WalletRejected',
-                errorMessage: 'MyNearWallet rejected the transaction.',
-              ),
-            ),
-            gasBurnt: BigInt.zero,
-          ),
-        ),
-      ];
+    final flow = _pendingFlow;
+    if (flow == null ||
+        (flow.operation != 'signAndSendTransaction' &&
+            flow.operation != 'signAndSendTransactions')) {
+      throw const MyNearWalletException.missingCallback();
+    }
+    if (!_matchesCallbackRoute(callbackUri, flow.successUrl)) {
+      throw const MyNearWalletCallbackException();
     }
 
-    _finishWalletFlow(operation);
-    // Parse transaction hashes from callback
-    return (callback.transactionHashes ?? []).map((hash) {
-      return TransactionResult(
-        transactionHash: CryptoHash(hash),
-        outcome: ExecutionOutcome(
-          status: ExecutionStatus.successValue(''),
-          gasBurnt: BigInt.zero,
-        ),
-      );
-    }).toList();
+    _callbackReceived(flow);
+    NearErrorCode? failureCode;
+    try {
+      final callback = MyNearWalletCallback.fromUri(callbackUri);
+      if (callback.isError) {
+        failureCode = NearErrorCode.userRejected;
+        return [
+          TransactionResult(
+            transactionHash: const CryptoHash(''),
+            outcome: ExecutionOutcome(
+              status: ExecutionStatus.failure(
+                const ExecutionError(
+                  errorType: 'WalletRejected',
+                  errorMessage: 'MyNearWallet rejected the transaction.',
+                ),
+              ),
+              gasBurnt: BigInt.zero,
+            ),
+          ),
+        ];
+      }
+
+      final hashes = callback.transactionHashes;
+      if (hashes == null ||
+          hashes.isEmpty ||
+          hashes.any((hash) => !_isCanonicalTransactionHash(hash))) {
+        failureCode = NearErrorCode.walletResponseInvalid;
+        throw const MyNearWalletCallbackException();
+      }
+      return hashes.map((hash) {
+        return TransactionResult(
+          transactionHash: CryptoHash(hash),
+          outcome: ExecutionOutcome(
+            status: ExecutionStatus.successValue(''),
+            gasBurnt: BigInt.zero,
+          ),
+        );
+      }).toList();
+    } catch (error, stackTrace) {
+      final normalized = _normalizeMyNearError(error);
+      failureCode ??= normalized.code;
+      Error.throwWithStackTrace(normalized, stackTrace);
+    } finally {
+      _finishWalletFlow(flow, failureCode: failureCode);
+    }
+  }
+
+  bool _isCanonicalTransactionHash(String value) {
+    try {
+      final bytes = base58Decode(value);
+      return bytes.length == 32 && base58Encode(bytes) == value;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Builds a message signing URL.
@@ -422,7 +494,12 @@ class MyNearWalletAdapter implements WalletAdapter {
   Future<SignedMessage> signMessage(SignMessageParams params) async {
     final uri = buildSignMessageUrl(params);
 
-    await _launchWalletFlow('signMessage', uri);
+    await _launchWalletFlow(
+      'signMessage',
+      uri,
+      successUrl: params.callbackUrl ?? config.successUrl,
+      signMessageRequest: params,
+    );
 
     throw const _PendingCallbackException(
       'Signed message must be parsed from callback URL. '
@@ -441,14 +518,28 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// This parses without verifying; to also check the signature
   /// cryptographically use [completeSignMessage].
   SignedMessage handleSignMessageCallback(Uri callbackUri) {
+    final pending = _pendingFlow;
+    if (pending == null || pending.operation != 'signMessage') {
+      try {
+        return _parseSignMessageCallback(callbackUri);
+      } catch (error, stackTrace) {
+        final normalized = _normalizeMyNearError(error);
+        Error.throwWithStackTrace(normalized, stackTrace);
+      }
+    }
+
+    final flow = _requireSignMessageFlow(callbackUri);
+    _callbackReceived(flow);
+    NearErrorCode? failureCode;
     try {
       final signed = _parseSignMessageCallback(callbackUri);
-      _finishWalletFlow('signMessage');
       return signed;
     } catch (error, stackTrace) {
       final normalized = _normalizeMyNearError(error);
-      _finishWalletFlow('signMessage', failureCode: normalized.code);
+      failureCode = normalized.code;
       Error.throwWithStackTrace(normalized, stackTrace);
+    } finally {
+      _finishWalletFlow(flow, failureCode: failureCode);
     }
   }
 
@@ -460,7 +551,7 @@ class MyNearWalletAdapter implements WalletAdapter {
           ...Uri.splitQueryString(callbackUri.fragment),
       };
 
-      final accountId = params['accountId'] ?? _account?.accountId.value;
+      final accountId = params['accountId'];
       final publicKey = params['publicKey'];
       final signature = params['signature'];
       if (accountId == null ||
@@ -503,10 +594,16 @@ class MyNearWalletAdapter implements WalletAdapter {
     Uri callbackUri, {
     required SignMessageParams request,
   }) async {
+    final flow = _requireSignMessageFlow(callbackUri);
+    if (!_sameSignMessageRequest(flow.signMessageRequest, request)) {
+      throw const MyNearWalletCallbackException();
+    }
+    _callbackReceived(flow);
+    NearErrorCode? failureCode;
     try {
       final signed = _parseSignMessageCallback(callbackUri);
 
-      if (request.state != null && signed.state != request.state) {
+      if (signed.state != request.state) {
         throw const MyNearWalletCallbackException();
       }
 
@@ -531,13 +628,43 @@ class MyNearWalletAdapter implements WalletAdapter {
       } catch (_) {
         throw const SignatureVerificationException();
       }
-      _finishWalletFlow('signMessage');
       return signed;
     } catch (error, stackTrace) {
       final normalized = _normalizeMyNearError(error);
-      _finishWalletFlow('signMessage', failureCode: normalized.code);
+      failureCode = normalized.code;
       Error.throwWithStackTrace(normalized, stackTrace);
+    } finally {
+      _finishWalletFlow(flow, failureCode: failureCode);
     }
+  }
+
+  _PendingMyNearWalletFlow _requireSignMessageFlow(Uri callbackUri) {
+    final flow = _pendingFlow;
+    if (flow == null || flow.operation != 'signMessage') {
+      throw const MyNearWalletException.missingCallback();
+    }
+    if (!_matchesCallbackRoute(callbackUri, flow.successUrl)) {
+      throw const MyNearWalletCallbackException();
+    }
+    return flow;
+  }
+
+  bool _sameSignMessageRequest(
+    SignMessageParams? pending,
+    SignMessageParams supplied,
+  ) {
+    if (pending == null ||
+        pending.message != supplied.message ||
+        pending.recipient != supplied.recipient ||
+        pending.callbackUrl != supplied.callbackUrl ||
+        pending.state != supplied.state ||
+        pending.nonce.length != supplied.nonce.length) {
+      return false;
+    }
+    for (var i = 0; i < pending.nonce.length; i++) {
+      if (pending.nonce[i] != supplied.nonce[i]) return false;
+    }
+    return true;
   }
 
   @override
@@ -553,28 +680,55 @@ class MyNearWalletAdapter implements WalletAdapter {
       },
     );
 
-    await _launchWalletFlow('verifyOwner', uri);
+    await _launchWalletFlow(
+      'verifyOwner',
+      uri,
+      successUrl: callbackUrl ?? config.successUrl,
+    );
 
     throw const _PendingCallbackException(
       'Verification result must be parsed from callback URL.',
     );
   }
 
-  Future<void> _launchWalletFlow(String operation, Uri uri) async {
-    _openWalletFlow(operation);
+  Future<void> _launchWalletFlow(
+    String operation,
+    Uri uri, {
+    required String successUrl,
+    SignMessageParams? signMessageRequest,
+  }) async {
+    _openWalletFlow(
+      operation,
+      successUrl: successUrl,
+      signMessageRequest: signMessageRequest,
+    );
+    final flow = _pendingFlow!;
     try {
       if (!await launchUrl(uri)) {
         throw const MyNearWalletException.deepLink();
       }
     } catch (error, stackTrace) {
       final normalized = _normalizeMyNearError(error);
-      _finishWalletFlow(operation, failureCode: normalized.code);
+      _finishWalletFlow(flow, failureCode: normalized.code);
       Error.throwWithStackTrace(normalized, stackTrace);
     }
   }
 
-  void _openWalletFlow(String operation) {
-    _flowStartedAt[operation] = DateTime.now();
+  void _openWalletFlow(
+    String operation, {
+    required String successUrl,
+    String? failureUrl,
+    SignMessageParams? signMessageRequest,
+  }) {
+    if (_pendingFlow != null) {
+      throw const MyNearWalletException.flowInProgress();
+    }
+    _pendingFlow = _PendingMyNearWalletFlow(
+      operation: operation,
+      successUrl: successUrl,
+      failureUrl: failureUrl,
+      signMessageRequest: signMessageRequest,
+    );
     _emitWalletEvent(
       NearLogEventType.walletFlowOpened,
       operation: operation,
@@ -583,15 +737,29 @@ class MyNearWalletAdapter implements WalletAdapter {
     );
   }
 
-  void _finishWalletFlow(String operation, {NearErrorCode? failureCode}) {
-    final startedAt = _flowStartedAt.remove(operation);
-    final durationMs = startedAt == null
-        ? 0
-        : DateTime.now().difference(startedAt).inMilliseconds;
+  void _callbackReceived(_PendingMyNearWalletFlow flow) {
+    if (!identical(_pendingFlow, flow) || flow.callbackReceived) return;
+    flow.callbackReceived = true;
     _emitWalletEvent(
       NearLogEventType.walletCallbackReceived,
-      operation: operation,
-      durationMs: durationMs,
+      operation: flow.operation,
+      durationMs: DateTime.now().difference(flow.startedAt).inMilliseconds,
+      outcome: 'received',
+    );
+  }
+
+  void _finishWalletFlow(
+    _PendingMyNearWalletFlow flow, {
+    NearErrorCode? failureCode,
+  }) {
+    if (!identical(_pendingFlow, flow)) return;
+    _pendingFlow = null;
+    _emitWalletEvent(
+      failureCode == null
+          ? NearLogEventType.walletFlowSucceeded
+          : NearLogEventType.walletFlowFailed,
+      operation: flow.operation,
+      durationMs: DateTime.now().difference(flow.startedAt).inMilliseconds,
       outcome: failureCode == null ? 'success' : 'failure',
       failureCode: failureCode,
     );
@@ -639,6 +807,22 @@ class MyNearWalletAdapter implements WalletAdapter {
   }
 }
 
+class _PendingMyNearWalletFlow {
+  _PendingMyNearWalletFlow({
+    required this.operation,
+    required this.successUrl,
+    this.failureUrl,
+    this.signMessageRequest,
+  }) : startedAt = DateTime.now();
+
+  final String operation;
+  final String successUrl;
+  final String? failureUrl;
+  final SignMessageParams? signMessageRequest;
+  final DateTime startedAt;
+  bool callbackReceived = false;
+}
+
 /// Exception thrown when waiting for a callback from the wallet.
 class _PendingCallbackException extends NearSdkException {
   const _PendingCallbackException(String message)
@@ -657,6 +841,18 @@ class MyNearWalletException extends NearSdkException {
     : super(
         code: NearErrorCode.deepLinkUnavailable,
         message: 'The MyNearWallet page could not be opened.',
+      );
+
+  const MyNearWalletException.flowInProgress()
+    : super(
+        code: NearErrorCode.unsupportedOperation,
+        message: 'Another MyNearWallet flow is already pending.',
+      );
+
+  const MyNearWalletException.missingCallback()
+    : super(
+        code: NearErrorCode.missingCallback,
+        message: 'No matching MyNearWallet callback is pending.',
       );
 
   const MyNearWalletException.unsupported()
