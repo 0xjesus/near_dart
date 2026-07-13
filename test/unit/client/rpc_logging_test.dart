@@ -130,5 +130,60 @@ void main() {
         client.close();
       },
     );
+
+    test(
+      'keeps invalid primary endpoint failures inside diagnostics lifecycle',
+      () async {
+        final events = <NearLogEvent>[];
+        final client = NearRpcClient(
+          rpcUrl: 'http://[invalid',
+          logger: events.add,
+          httpClient: MockClient((_) async => throw StateError('not reached')),
+        );
+
+        final result = await client.gasPrice();
+
+        expect(result.isFailure, isTrue);
+        expect(events.map((event) => event.type), [
+          NearLogEventType.rpcRequestStarted,
+          NearLogEventType.rpcRequestFailed,
+        ]);
+        expect(
+          events.expand((event) => event.metadata.values).join(),
+          isNot(contains('http://[invalid')),
+        );
+        expect(events.first.metadata['endpoint'], 'invalid-endpoint');
+        expect(events.last.metadata['endpoint'], 'invalid-endpoint');
+        client.close();
+      },
+    );
+
+    test(
+      'keeps invalid fallback endpoint failures inside diagnostics lifecycle',
+      () async {
+        final events = <NearLogEvent>[];
+        final client = NearRpcClient(
+          rpcUrl: 'https://primary.example.com/rpc',
+          fallbackUrls: const ['http://[invalid'],
+          logger: events.add,
+          httpClient: MockClient((_) async => http.Response('offline', 503)),
+        );
+
+        final result = await client.gasPrice();
+
+        expect(result.isFailure, isTrue);
+        expect(events.map((event) => event.type), [
+          NearLogEventType.rpcRequestStarted,
+          NearLogEventType.rpcRequestRetried,
+          NearLogEventType.rpcRequestFailed,
+        ]);
+        expect(events.last.metadata['endpoint'], 'invalid-endpoint');
+        expect(
+          events.expand((event) => event.metadata.values).join(),
+          isNot(contains('http://[invalid')),
+        );
+        client.close();
+      },
+    );
   });
 }

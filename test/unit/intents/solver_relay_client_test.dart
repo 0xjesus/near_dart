@@ -136,6 +136,89 @@ void main() {
     });
 
     test(
+      'keeps solver model decode failures inside the request lifecycle',
+      () async {
+        final calls = <Future<void> Function(SolverRelayClient)>[
+          (client) async => client.quote(
+            const SolverRelayQuoteRequest(
+              defuseAssetIdentifierIn: 'nep141:wrap.near',
+              defuseAssetIdentifierOut: 'nep141:usdc.near',
+              exactAmountIn: '100',
+            ),
+          ),
+          (client) async => client.publishIntent(
+            const SolverRelayPublishIntentRequest(
+              quoteHashes: ['qh'],
+              signedData: SignedMultiPayload(
+                standard: IntentSigningStandard.nep413,
+                payload: {'message': 'm'},
+                publicKey: 'ed25519:pub',
+                signature: 'sig',
+              ),
+            ),
+          ),
+          (client) async => client.getStatus('intent-hash'),
+        ];
+        final invalidResults = [
+          <Object?>[{}],
+          <String, Object?>{},
+          <String, Object?>{},
+        ];
+
+        for (var index = 0; index < calls.length; index++) {
+          final events = <NearLogEvent>[];
+          final client = SolverRelayClient(
+            logger: events.add,
+            httpClient: MockClient(
+              (_) async => http.Response(
+                jsonEncode({
+                  'jsonrpc': '2.0',
+                  'id': 1,
+                  'result': invalidResults[index],
+                }),
+                200,
+              ),
+            ),
+          );
+
+          await expectLater(calls[index](client), throwsA(anything));
+          expect(events.map((event) => event.type), [
+            NearLogEventType.intentsRequestStarted,
+            NearLogEventType.intentsRequestFailed,
+          ]);
+        }
+      },
+    );
+
+    test('logs malformed solver JSON as a request failure', () async {
+      final events = <NearLogEvent>[];
+      final client = SolverRelayClient(
+        logger: events.add,
+        httpClient: MockClient((_) async => http.Response('not-json', 200)),
+      );
+
+      await expectLater(client.getStatus('intent-hash'), throwsA(anything));
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.intentsRequestStarted,
+        NearLogEventType.intentsRequestFailed,
+      ]);
+    });
+
+    test('supports const relay exceptions without exposing their bodies', () {
+      const exception = SolverRelayException(
+        'private message',
+        statusCode: 429,
+        body: 'test-secret',
+      );
+
+      expect(exception, isA<NearSdkException>());
+      expect(exception.code, NearErrorCode.rateLimited);
+      expect(exception.retryable, isTrue);
+      expect(exception.toString(), isNot(contains('test-secret')));
+    });
+
+    test(
       'logs safe lifecycle events without API key or quote parameters',
       () async {
         final events = <NearLogEvent>[];

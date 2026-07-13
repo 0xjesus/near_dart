@@ -10,15 +10,23 @@ import 'one_click_models.dart';
 
 /// Exception thrown when the 1Click API returns a non-2xx response.
 class OneClickApiException extends NearSdkException {
-  OneClickApiException(this.statusCode, this.body)
+  const OneClickApiException(this.statusCode, this.body)
     : super(
-        code: _codeForHttpStatus(statusCode),
-        message: '1Click API request failed with HTTP $statusCode',
-        retryable: _isRetryableHttpStatus(statusCode),
+        code: NearErrorCode.invalidResponse,
+        message: '1Click API request failed',
       );
 
   final int statusCode;
   final String body;
+
+  @override
+  NearErrorCode get code => _codeForHttpStatus(statusCode);
+
+  @override
+  String get message => '1Click API request failed with HTTP $statusCode';
+
+  @override
+  bool get retryable => _isRetryableHttpStatus(statusCode);
 
   @override
   String toString() =>
@@ -51,22 +59,28 @@ class OneClickClient {
   final bool _ownsHttpClient;
 
   /// Lists tokens supported by the 1Click API.
-  Future<List<OneClickToken>> tokens() async {
-    final json = await _request('GET', '/v0/tokens');
-    if (json is! List) {
-      throw const FormatException('Expected token list response');
-    }
-    return json
-        .cast<Map<String, dynamic>>()
-        .map(OneClickToken.fromJson)
-        .toList();
-  }
+  Future<List<OneClickToken>> tokens() => _request(
+    'GET',
+    '/v0/tokens',
+    parser: (json) {
+      if (json is! List) {
+        throw const FormatException('Expected token list response');
+      }
+      return json
+          .cast<Map<String, dynamic>>()
+          .map(OneClickToken.fromJson)
+          .toList();
+    },
+  );
 
   /// Requests a swap quote.
-  Future<OneClickQuoteResponse> quote(OneClickQuoteRequest request) async {
-    final json = await _request('POST', '/v0/quote', body: request.toJson());
-    return OneClickQuoteResponse.fromJson(_asObject(json, 'quote response'));
-  }
+  Future<OneClickQuoteResponse> quote(OneClickQuoteRequest request) => _request(
+    'POST',
+    '/v0/quote',
+    body: request.toJson(),
+    parser: (json) =>
+        OneClickQuoteResponse.fromJson(_asObject(json, 'quote response')),
+  );
 
   /// Notifies 1Click about an origin-chain deposit transaction.
   Future<void> submitDeposit({
@@ -75,7 +89,7 @@ class OneClickClient {
     String? nearSenderAccount,
     String? memo,
   }) async {
-    await _request(
+    await _request<void>(
       'POST',
       '/v0/deposit/submit',
       body: {
@@ -84,6 +98,7 @@ class OneClickClient {
         if (nearSenderAccount != null) 'nearSenderAccount': nearSenderAccount,
         if (memo != null) 'memo': memo,
       },
+      parser: (_) {},
     );
   }
 
@@ -92,15 +107,16 @@ class OneClickClient {
     required String depositAddress,
     String? depositMemo,
   }) async {
-    final json = await _request(
+    return _request(
       'GET',
       '/v0/status',
       query: {
         'depositAddress': depositAddress,
         if (depositMemo != null) 'depositMemo': depositMemo,
       },
+      parser: (json) =>
+          OneClickStatus.fromJson(_asObject(json, 'status response')),
     );
-    return OneClickStatus.fromJson(_asObject(json, 'status response'));
   }
 
   /// Generates an unsigned intent for wallet signing.
@@ -110,7 +126,7 @@ class OneClickClient {
     required IntentSigningStandard standard,
     String type = 'swap_transfer',
   }) async {
-    final json = await _request(
+    return _request(
       'POST',
       '/v0/generate-intent',
       body: {
@@ -119,8 +135,9 @@ class OneClickClient {
         'signerId': signerId,
         'standard': standard.wireValue,
       },
+      parser: (json) =>
+          GeneratedIntent.fromJson(_asObject(json, 'generated intent')),
     );
-    return GeneratedIntent.fromJson(_asObject(json, 'generated intent'));
   }
 
   /// Lists withdrawals produced by an ANY_INPUT quote.
@@ -132,7 +149,7 @@ class OneClickClient {
     int? limit,
     OneClickSortOrder? sortOrder,
   }) async {
-    final json = await _request(
+    return _request(
       'GET',
       '/v0/any-input/withdrawals',
       query: {
@@ -144,9 +161,9 @@ class OneClickClient {
         if (limit != null) 'limit': '$limit',
         if (sortOrder != null) 'sortOrder': sortOrder.wireValue,
       },
-    );
-    return OneClickAnyInputWithdrawals.fromJson(
-      _asObject(json, 'ANY_INPUT withdrawals response'),
+      parser: (json) => OneClickAnyInputWithdrawals.fromJson(
+        _asObject(json, 'ANY_INPUT withdrawals response'),
+      ),
     );
   }
 
@@ -156,21 +173,22 @@ class OneClickClient {
     required SignedMultiPayload signedData,
     Map<String, dynamic> extra = const {},
   }) async {
-    final json = await _request(
+    return _request(
       'POST',
       '/v0/submit-intent',
       body: {...extra, 'type': type, 'signedData': signedData.toJson()},
-    );
-    return SubmitIntentResponse.fromJson(
-      _asObject(json, 'submit intent response'),
+      parser: (json) => SubmitIntentResponse.fromJson(
+        _asObject(json, 'submit intent response'),
+      ),
     );
   }
 
-  Future<dynamic> _request(
+  Future<T> _request<T>(
     String method,
     String path, {
     Map<String, String>? query,
     Map<String, dynamic>? body,
+    required T Function(dynamic json) parser,
   }) async {
     final uri = _uri(path, query);
     final stopwatch = Stopwatch()..start();
@@ -188,7 +206,8 @@ class OneClickClient {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OneClickApiException(response.statusCode, response.body);
       }
-      final result = response.body.isEmpty ? null : jsonDecode(response.body);
+      final json = response.body.isEmpty ? null : jsonDecode(response.body);
+      final result = parser(json);
       _emitRequestEvent(
         NearLogEventType.intentsRequestSucceeded,
         method: method,

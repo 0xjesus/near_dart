@@ -9,15 +9,24 @@ import 'solver_relay_models.dart';
 
 /// Exception thrown when the solver relay returns an HTTP or JSON-RPC error.
 class SolverRelayException extends NearSdkException {
-  SolverRelayException(String message, {this.statusCode, this.body})
+  const SolverRelayException(this._message, {this.statusCode, this.body})
     : super(
-        code: _codeForSolverFailure(statusCode),
-        message: message,
-        retryable: _isRetryableSolverFailure(statusCode),
+        code: NearErrorCode.invalidResponse,
+        message: 'Solver relay request failed',
       );
 
+  final String _message;
   final int? statusCode;
   final String? body;
+
+  @override
+  NearErrorCode get code => _codeForSolverFailure(statusCode);
+
+  @override
+  String get message => _message;
+
+  @override
+  bool get retryable => _isRetryableSolverFailure(statusCode);
 
   @override
   String toString() =>
@@ -56,34 +65,37 @@ class SolverRelayClient {
   int _nextId = 1;
 
   /// Requests solver quotes through the Message Bus.
-  Future<List<SolverRelayQuote>> quote(SolverRelayQuoteRequest request) async {
-    final result = await _rpc('quote', [request.toJson()]);
-    if (result is! List) {
-      throw SolverRelayException('Expected quote result list');
-    }
-    return result
-        .cast<Map<String, dynamic>>()
-        .map(SolverRelayQuote.fromJson)
-        .toList();
-  }
+  Future<List<SolverRelayQuote>> quote(SolverRelayQuoteRequest request) =>
+      _rpc('quote', [request.toJson()], (result) {
+        if (result is! List) {
+          throw const SolverRelayException('Expected quote result list');
+        }
+        return result
+            .cast<Map<String, dynamic>>()
+            .map(SolverRelayQuote.fromJson)
+            .toList();
+      });
 
   /// Publishes a signed user intent for execution.
   Future<SolverRelayPublishIntentResponse> publishIntent(
     SolverRelayPublishIntentRequest request,
-  ) async {
-    final result = await _rpc('publish_intent', [request.toJson()]);
-    return SolverRelayPublishIntentResponse.fromJson(_asObject(result));
-  }
+  ) => _rpc(
+    'publish_intent',
+    [request.toJson()],
+    (result) => SolverRelayPublishIntentResponse.fromJson(_asObject(result)),
+  );
 
   /// Checks execution status for a published intent.
-  Future<SolverRelayIntentStatus> getStatus(String intentHash) async {
-    final result = await _rpc('get_status', [
-      {'intent_hash': intentHash},
-    ]);
-    return SolverRelayIntentStatus.fromJson(_asObject(result));
-  }
+  Future<SolverRelayIntentStatus> getStatus(String intentHash) =>
+      _rpc('get_status', [
+        {'intent_hash': intentHash},
+      ], (result) => SolverRelayIntentStatus.fromJson(_asObject(result)));
 
-  Future<dynamic> _rpc(String method, List<Map<String, dynamic>> params) async {
+  Future<T> _rpc<T>(
+    String method,
+    List<Map<String, dynamic>> params,
+    T Function(dynamic result) parser,
+  ) async {
     final id = _nextId++;
     final stopwatch = Stopwatch()..start();
     _emitRequestEvent(
@@ -123,13 +135,14 @@ class SolverRelayClient {
           body: response.body,
         );
       }
+      final result = parser(decoded['result']);
       _emitRequestEvent(
         NearLogEventType.intentsRequestSucceeded,
         operation: method,
         statusCode: response.statusCode,
         stopwatch: stopwatch,
       );
-      return decoded['result'];
+      return result;
     } catch (_) {
       _emitRequestEvent(
         NearLogEventType.intentsRequestFailed,

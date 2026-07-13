@@ -53,6 +53,8 @@ enum TxExecutionStatus {
 /// );
 /// ```
 class NearRpcClient {
+  static const _invalidEndpointOrigin = 'invalid-endpoint';
+
   /// Creates a client with a custom RPC URL.
   ///
   /// When [fallbackUrls] is non-empty, requests that fail at the
@@ -353,7 +355,7 @@ class NearRpcClient {
         type: type,
         operation: method,
         metadata: {
-          'endpoint': Uri.parse(url).origin,
+          'endpoint': _endpointOrigin(url),
           'attempt': attempt,
           'endpointCount': endpointCount,
           if (statusCode != null) 'statusCode': statusCode,
@@ -361,6 +363,16 @@ class NearRpcClient {
         },
       ),
     );
+  }
+
+  String _endpointOrigin(String url) {
+    try {
+      final uri = Uri.parse(url);
+      if (!uri.hasScheme || uri.host.isEmpty) return _invalidEndpointOrigin;
+      return uri.origin;
+    } on FormatException {
+      return _invalidEndpointOrigin;
+    }
   }
 
   /// Returns the status of the connected RPC node.

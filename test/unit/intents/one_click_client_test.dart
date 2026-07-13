@@ -316,6 +316,71 @@ void main() {
       );
     });
 
+    test('keeps model decode failures inside the request lifecycle', () async {
+      final calls = <Future<void> Function(OneClickClient)>[
+        (client) async => client.tokens(),
+        (client) async => client.quote(_quoteRequest()),
+        (client) async => client.status(depositAddress: 'deposit-address'),
+        (client) async => client.generateIntent(
+          depositAddress: 'deposit-address',
+          signerId: 'alice.near',
+          standard: IntentSigningStandard.nep413,
+        ),
+        (client) async =>
+            client.anyInputWithdrawals(depositAddress: 'deposit-address'),
+        (client) async => client.submitIntent(
+          type: 'swap_transfer',
+          signedData: const SignedMultiPayload(
+            standard: IntentSigningStandard.nep413,
+            payload: {'message': 'm'},
+            publicKey: 'ed25519:pub',
+            signature: 'sig',
+          ),
+        ),
+      ];
+      final invalidBodies = ['[{}]', '{}', '[]', '[]', '[]', '[]'];
+
+      for (var index = 0; index < calls.length; index++) {
+        final events = <NearLogEvent>[];
+        final client = OneClickClient(
+          logger: events.add,
+          httpClient: MockClient(
+            (_) async => http.Response(invalidBodies[index], 200),
+          ),
+        );
+
+        await expectLater(calls[index](client), throwsA(anything));
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestFailed,
+        ]);
+      }
+    });
+
+    test('logs malformed JSON as a request failure', () async {
+      final events = <NearLogEvent>[];
+      final client = OneClickClient(
+        logger: events.add,
+        httpClient: MockClient((_) async => http.Response('not-json', 200)),
+      );
+
+      await expectLater(client.tokens(), throwsA(anything));
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.intentsRequestStarted,
+        NearLogEventType.intentsRequestFailed,
+      ]);
+    });
+
+    test('supports const API exceptions without exposing their bodies', () {
+      const exception = OneClickApiException(429, 'test-secret');
+
+      expect(exception, isA<NearSdkException>());
+      expect(exception.code, NearErrorCode.rateLimited);
+      expect(exception.retryable, isTrue);
+      expect(exception.toString(), isNot(contains('test-secret')));
+    });
+
     test(
       'logs safe lifecycle events without auth or request contents',
       () async {
@@ -381,4 +446,21 @@ void main() {
       },
     );
   });
+}
+
+OneClickQuoteRequest _quoteRequest() {
+  return OneClickQuoteRequest(
+    dry: true,
+    swapType: OneClickSwapType.exactInput,
+    slippageTolerance: 50,
+    originAsset: 'nep141:wrap.near',
+    depositType: OneClickDepositType.originChain,
+    destinationAsset: 'nep141:usdc.near',
+    amount: '1000',
+    refundTo: 'alice.near',
+    refundType: OneClickRefundType.originChain,
+    recipient: 'bob.near',
+    recipientType: OneClickRecipientType.intents,
+    deadline: DateTime.utc(2026, 7, 6, 12, 5),
+  );
 }

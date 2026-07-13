@@ -124,6 +124,15 @@ void main() {
       );
     });
 
+    test('supports const API exceptions without exposing their bodies', () {
+      const exception = OneClickExplorerApiException(429, 'test-secret');
+
+      expect(exception, isA<NearSdkException>());
+      expect(exception.code, NearErrorCode.rateLimited);
+      expect(exception.retryable, isTrue);
+      expect(exception.toString(), isNot(contains('test-secret')));
+    });
+
     test('logs safe lifecycle events without bearer auth', () async {
       final events = <NearLogEvent>[];
       final client = OneClickExplorerClient(

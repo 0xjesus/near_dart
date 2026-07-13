@@ -9,15 +9,23 @@ import 'one_click_models.dart';
 
 /// Exception thrown when the NEAR Intents Explorer API returns non-2xx.
 class OneClickExplorerApiException extends NearSdkException {
-  OneClickExplorerApiException(this.statusCode, this.body)
+  const OneClickExplorerApiException(this.statusCode, this.body)
     : super(
-        code: _codeForExplorerHttpStatus(statusCode),
-        message: 'Explorer API request failed with HTTP $statusCode',
-        retryable: _isRetryableExplorerHttpStatus(statusCode),
+        code: NearErrorCode.invalidResponse,
+        message: 'Explorer API request failed',
       );
 
   final int statusCode;
   final String body;
+
+  @override
+  NearErrorCode get code => _codeForExplorerHttpStatus(statusCode);
+
+  @override
+  String get message => 'Explorer API request failed with HTTP $statusCode';
+
+  @override
+  bool get retryable => _isRetryableExplorerHttpStatus(statusCode);
 
   @override
   String toString() =>

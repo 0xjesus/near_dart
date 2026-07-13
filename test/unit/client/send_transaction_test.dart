@@ -203,4 +203,33 @@ void main() {
       await asyncServer.close(force: true);
     });
   });
+
+  group('txStatus', () {
+    test('uses EXECUTED as the default waitUntil value', () async {
+      final signed = await buildSignedTransaction();
+      responder = (_) => successOutcome(signed);
+
+      await client.txStatus(
+        transactionHash: signed.hash!,
+        senderAccountId: AccountId('alice.testnet'),
+      );
+
+      final params = receivedRequests.single['params'] as Map<String, dynamic>;
+      expect(params['wait_until'], 'EXECUTED');
+    });
+
+    test('uses an overridden waitUntil value', () async {
+      final signed = await buildSignedTransaction();
+      responder = (_) => successOutcome(signed);
+
+      await client.txStatus(
+        transactionHash: signed.hash!,
+        senderAccountId: AccountId('alice.testnet'),
+        waitUntil: TxExecutionStatus.final_,
+      );
+
+      final params = receivedRequests.single['params'] as Map<String, dynamic>;
+      expect(params['wait_until'], 'FINAL');
+    });
+  });
 }
