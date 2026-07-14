@@ -23,6 +23,10 @@ Uri _withWalletQuery(Uri callback, Map<String, String> values) {
   );
 }
 
+Uri _withWalletFragment(Uri callback, Map<String, String> values) {
+  return callback.replace(fragment: Uri(queryParameters: values).query);
+}
+
 Matcher get _throwsPendingCallback => throwsA(
   isA<NearSdkException>().having(
     (error) => error.code,
@@ -303,31 +307,39 @@ void main() {
 
   group('E2E: MyNearWallet Sign Message Flow', () {
     late MyNearWalletAdapter adapter;
+    late List<Uri> launchedUrls;
 
     setUp(() {
+      launchedUrls = [];
       adapter = MyNearWalletAdapter(
         config: MyNearWalletConfig(
           contractId: AccountId('app.near'),
           successUrl: 'https://myapp.com/signed',
           failureUrl: 'https://myapp.com/failed',
         ),
-        launchUrl: (_) async => true,
+        launchUrl: (uri) async {
+          launchedUrls.add(uri);
+          return true;
+        },
       );
     });
 
-    test('complete sign message URL flow', () {
-      // Create sign message params
+    test('complete secure sign message URL flow', () async {
       final nonce = List.generate(32, (i) => i);
-      final params = SignMessageParams(
+      final request = SignMessageParams(
         message: 'Please sign this message to authenticate',
         recipient: 'myapp.com',
         nonce: nonce,
         callbackUrl: 'https://myapp.com/auth/callback',
         state: 'csrf-token-12345',
       );
+      final walletKey = await KeyPairEd25519.fromSeed(List<int>.filled(32, 42));
 
-      // Build sign message URL
-      final url = adapter.buildSignMessageUrl(params);
+      // Launch through the secure starter so the adapter opens a correlated,
+      // one-shot pending flow.
+      await expectLater(adapter.signMessage(request), _throwsPendingCallback);
+      final url = launchedUrls.single;
+      final emittedCallback = _launchedCallback(url, 'callbackUrl');
 
       expect(url.path, equals('/sign-message'));
       expect(
@@ -335,26 +347,48 @@ void main() {
         equals('Please sign this message to authenticate'),
       );
       expect(url.queryParameters['recipient'], equals('myapp.com'));
-      expect(url.queryParameters['state'], equals('csrf-token-12345'));
+      expect(url.queryParameters['state'], equals(request.state));
+      expect(emittedCallback.scheme, equals('https'));
+      expect(emittedCallback.host, equals('myapp.com'));
+      expect(emittedCallback.path, equals('/auth/callback'));
+      expect(emittedCallback.queryParameters, hasLength(1));
 
-      // Verify nonce is base64 encoded correctly
       final encodedNonce = url.queryParameters['nonce']!;
       final decodedNonce = base64Decode(encodedNonce);
       expect(decodedNonce, equals(nonce));
 
-      // Simulate callback
-      final callbackUri = Uri.parse(
-        'https://myapp.com/auth/callback?accountId=alice.near&publicKey=ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp&signature=sig123&state=csrf-token-12345',
+      // Sign the exact payload emitted to the wallet, including its correlated
+      // callback URL, then preserve that callback URI when adding wallet data.
+      final walletSigned = await signNep413Message(
+        payload: Nep413Payload(
+          message: request.message,
+          recipient: request.recipient,
+          nonce: request.nonce,
+          callbackUrl: emittedCallback.toString(),
+        ),
+        keyPair: walletKey,
+        accountId: AccountId('alice.near'),
       );
-      final signedMessage = adapter.handleSignMessageCallback(callbackUri);
+      final callbackUri = _withWalletFragment(emittedCallback, {
+        'accountId': 'alice.near',
+        'publicKey': walletKey.publicKey.value,
+        'signature': walletSigned.signature,
+        'state': request.state!,
+      });
+      final signedMessage = await adapter.completeSignMessage(
+        callbackUri,
+        request: request,
+      );
 
       expect(signedMessage.accountId.value, equals('alice.near'));
-      expect(
-        signedMessage.publicKey.value,
-        equals('ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp'),
+      expect(signedMessage.publicKey, equals(walletKey.publicKey));
+      expect(signedMessage.signature, equals(walletSigned.signature));
+      expect(base64Decode(signedMessage.signature), hasLength(64));
+      expect(signedMessage.state, equals(request.state));
+      await expectLater(
+        adapter.completeSignMessage(callbackUri, request: request),
+        _throwsPendingCallback,
       );
-      expect(signedMessage.signature, equals('sig123'));
-      expect(signedMessage.state, equals('csrf-token-12345'));
     });
   });
 

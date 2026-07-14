@@ -146,7 +146,7 @@ void main() {
     });
 
     test('returns error for non-existent key', () async {
-      final fakeKey = PublicKey(KnownPublicKeys.ed25519Valid);
+      final fakeKey = (await KeyPairEd25519.generate()).publicKey;
 
       final result = await client.viewAccessKey(
         accountId: TestnetAccounts.testnet,

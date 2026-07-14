@@ -87,4 +87,81 @@ void main() {
     expect(result, isA<RpcSuccess<AccessKeyView>>());
     expect(result.getOrThrow().nonce, 7);
   });
+
+  group('legacy query result near-misses', () {
+    const completeEnvelope = <String, dynamic>{
+      'block_hash': '11111111111111111111111111111111',
+      'block_height': 123,
+      'error': 'synthetic-runtime-error-sentinel',
+      'logs': <String>['synthetic-runtime-log-sentinel'],
+    };
+
+    for (final missingField in <String>[
+      'block_hash',
+      'block_height',
+      'error',
+      'logs',
+    ]) {
+      test('does not recognize an envelope missing $missingField', () async {
+        final nearMiss = Map<String, dynamic>.of(completeEnvelope)
+          ..remove(missingField);
+        final client = NearRpcClient(
+          rpcUrl: 'https://rpc.example.com',
+          httpClient: MockClient(
+            (request) async => http.Response(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': 'ignored',
+                'result': nearMiss,
+              }),
+              200,
+            ),
+          ),
+        );
+        addTearDown(client.close);
+
+        final result = await client.viewAccessKey(
+          accountId: AccountId('missing.testnet'),
+          publicKey: PublicKey(
+            'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+          ),
+          blockReference: BlockReference.finality(Finality.optimistic),
+        );
+
+        expect(result, isA<RpcFailure<AccessKeyView>>());
+        expect(
+          (result as RpcFailure<AccessKeyView>).error.kind,
+          RpcErrorKind.parseError,
+        );
+      });
+    }
+
+    test('does not recognize an envelope with a non-string error', () async {
+      final nearMiss = <String, dynamic>{...completeEnvelope, 'error': 7};
+      final client = NearRpcClient(
+        rpcUrl: 'https://rpc.example.com',
+        httpClient: MockClient(
+          (request) async => http.Response(
+            jsonEncode({'jsonrpc': '2.0', 'id': 'ignored', 'result': nearMiss}),
+            200,
+          ),
+        ),
+      );
+      addTearDown(client.close);
+
+      final result = await client.viewAccessKey(
+        accountId: AccountId('missing.testnet'),
+        publicKey: PublicKey(
+          'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+        ),
+        blockReference: BlockReference.finality(Finality.optimistic),
+      );
+
+      expect(result, isA<RpcFailure<AccessKeyView>>());
+      expect(
+        (result as RpcFailure<AccessKeyView>).error.kind,
+        RpcErrorKind.parseError,
+      );
+    });
+  });
 }

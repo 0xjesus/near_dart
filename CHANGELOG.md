@@ -22,6 +22,8 @@
 
 - Normalize wallet rejection, malformed response, timeout, rate-limit,
   transport, account-mismatch, and signature-verification failures.
+- Normalize legacy query-result runtime envelopes before typed response
+  parsing while preserving their structured error data.
 - Reject malformed/cross-operation wallet callbacks and canonicalize
   MyNearWallet transaction-hash handling without treating callback outcomes as
   authenticated chain results.

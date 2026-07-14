@@ -3,11 +3,18 @@
 @Timeout(Duration(minutes: 5))
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:near_dart/near_dart.dart';
 import 'package:test/test.dart';
+
+class _NeverCompletingClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      Completer<http.StreamedResponse>().future;
+}
 
 /// Full end-to-end test of local signing against the REAL testnet:
 ///
@@ -32,12 +39,21 @@ Future<AccessKeyView> _waitForAccessKey({
   var attempts = 0;
 
   while (elapsed.elapsed < timeout) {
+    final requestTimeout = timeout - elapsed.elapsed;
+    if (requestTimeout <= Duration.zero) break;
     attempts++;
-    final result = await client.viewAccessKey(
-      accountId: accountId,
-      publicKey: publicKey,
-      blockReference: BlockReference.finality(Finality.final_),
-    );
+    late final RpcResult<AccessKeyView> result;
+    try {
+      result = await client
+          .viewAccessKey(
+            accountId: accountId,
+            publicKey: publicKey,
+            blockReference: BlockReference.finality(Finality.final_),
+          )
+          .timeout(requestTimeout);
+    } on TimeoutException {
+      break;
+    }
     final accessKey = result.getOrNull();
     if (accessKey != null) return accessKey;
     lastError = (result as RpcFailure<AccessKeyView>).error;
@@ -59,6 +75,40 @@ Future<AccessKeyView> _waitForAccessKey({
 
 void main() {
   const faucetUrl = 'https://helper.testnet.near.org/account';
+
+  test(
+    'bounds each access-key RPC poll by the remaining deadline',
+    () async {
+      final keyPair = await KeyPairEd25519.fromSeed(List<int>.filled(32, 7));
+      final client = NearRpcClient(
+        rpcUrl: 'https://rpc.example.com',
+        timeout: const Duration(seconds: 30),
+        httpClient: _NeverCompletingClient(),
+      );
+      addTearDown(client.close);
+      final elapsed = Stopwatch()..start();
+      Object? failure;
+
+      try {
+        await _waitForAccessKey(
+          client: client,
+          accountId: AccountId('deadline.testnet'),
+          publicKey: keyPair.publicKey,
+          timeout: const Duration(milliseconds: 50),
+          pollInterval: const Duration(milliseconds: 1),
+        );
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure, isNotNull);
+      expect(failure.toString(), contains('account=deadline.testnet'));
+      expect(failure.toString(), contains(keyPair.publicKey.value));
+      expect(failure.toString(), isNot(contains('rpc.example.com')));
+      expect(elapsed.elapsed, lessThan(const Duration(milliseconds: 500)));
+    },
+    timeout: const Timeout(Duration(seconds: 1)),
+  );
 
   test('signs, sends and executes a real transfer on testnet', () async {
     final client = NearRpcClient.testnet();

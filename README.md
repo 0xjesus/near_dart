@@ -450,7 +450,7 @@ are verified on every push via a macOS CI job.
 ## Testing
 
 ```bash
-dart test --exclude-tags integration   # 394 offline tests (no network)
+dart test --exclude-tags integration   # offline tests (no network)
 dart test test/integration/testnet/    # live testnet RPC tests
 dart test test/e2e/                    # incl. a REAL sign+send on testnet
 ```

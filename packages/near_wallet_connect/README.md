@@ -4,7 +4,8 @@
 
 **One button. Every NEAR wallet.** Drop-in wallet connection for Flutter —
 `NearConnectButton` opens a wallet picker (**MyNearWallet, Intear, HOT**), and
-one controller gives you the same API whatever the user picked. Built on
+one controller handles wallet selection, connection, and session state. Signing
+capabilities remain wallet-specific, as described below. Built on
 [`near_dart`](https://pub.dev/packages/near_dart).
 
 <p align="center">
@@ -43,10 +44,13 @@ void initState() {
 NearConnectButton(controller: wallet);
 ```
 
-Connected. Now **one API, whatever the wallet**:
+Connected. `signer()` is available for MyNearWallet and Intear sessions that
+provision a function-call key. The controller's `signMessage` and
+`sendTransactions` methods are available for **Intear and HOT only**; they
+return `NearErrorCode.unsupportedOperation` when MyNearWallet is selected.
 
 ```dart
-// 1. Gas-only contract calls, signed locally (function-call key — no popups):
+// MyNearWallet or Intear: gas-only calls signed with a function-call key.
 final signer = await wallet.signer();
 await signer!.callFunction(
   contractId: AccountId('app.testnet'),
@@ -54,14 +58,14 @@ await signer!.callFunction(
   args: {'text': 'hello'},
 );
 
-// 2. "Sign in with NEAR" (NEP-413) — e.g. against a better-near-auth API:
+// Intear or HOT: NEP-413 signing resolves through the wallet bridge/relay.
 final signed = await wallet.signMessage(Nep413Payload(
   message: 'Sign in to app.com',
   recipient: 'app.com',
   nonce: generateNep413Nonce(),
 ));
 
-// 3. Payments & deposits, approved in the user's wallet:
+// Intear or HOT: payments and deposits approved in the user's wallet.
 await wallet.sendTransactions([
   {
     'receiverId': 'app.testnet',
@@ -80,7 +84,65 @@ await wallet.sendTransactions([
 ]);
 ```
 
-That's it. See [`example/`](example/) for a complete minimal app.
+For MyNearWallet message and transaction signing, use the secure redirect
+starter/completion pairs from `near_dart`; do not use the URL-only builders for
+new flows:
+
+```dart
+import 'package:near_dart/near_dart.dart';
+
+final myNearWallet = MyNearWalletAdapter(
+  config: MyNearWalletConfig(
+    contractId: AccountId('app.testnet'),
+    successUrl: 'myapp://wallet/success',
+    failureUrl: 'myapp://wallet/failure',
+    network: MyNearWalletNetwork.testnet,
+  ),
+  keyStore: wallet.keyStore,
+  launchUrl: openExternalWalletUrl,
+);
+
+final request = SignMessageParams(
+  message: 'Sign in to app.com',
+  recipient: 'app.com',
+  nonce: generateNep413Nonce(),
+  state: createAndStoreCsrfState(),
+);
+
+// Starter: opens a correlated, one-shot flow and launches the wallet.
+try {
+  await myNearWallet.signMessage(request);
+} on NearSdkException catch (error) {
+  if (error.code != NearErrorCode.missingCallback) rethrow;
+}
+
+// Completion: pass the wallet-emitted callback URI through unchanged.
+final signed = await myNearWallet.completeSignMessage(
+  signMessageCallbackUri,
+  request: request,
+);
+
+// Transaction starter/completion use the same correlated callback lifecycle.
+try {
+  await myNearWallet.signAndSendTransactions(transactions: transactions);
+} on NearSdkException catch (error) {
+  if (error.code != NearErrorCode.missingCallback) rethrow;
+}
+final outcomes = myNearWallet.handleTransactionCallback(
+  transactionCallbackUri,
+);
+```
+
+Keep the original request until completion. Never reconstruct a callback URI
+from a configured base URL: the callback embedded in each launched wallet URL
+contains correlation data that must survive unchanged. Completion checks the
+exact route and correlation value and consumes the flow once, so replay is
+rejected. `completeSignMessage` also checks `state` and verifies the Ed25519
+signature over the exact emitted NEP-413 payload, including its callback URL.
+For authentication, also enforce nonce freshness and recipient server-side and
+verify that the returned key is authorized for the claimed account.
+
+See [`example/`](example/) for a complete minimal app.
 
 For lifecycle-safe ChangeNotifier, Provider, Riverpod, and Bloc/Cubit setups,
 see the
@@ -175,14 +237,14 @@ Reusable pieces:
 
 | Wallet | Networks | Connect flow | `signer()` | `signMessage` | `sendTransactions` |
 |---|---|---|---|---|---|
-| **MyNearWallet** | testnet + mainnet | browser redirect | ✅ | via redirect² | via redirect² |
-| **Intear** | testnet + mainnet | native app + WebSocket bridge¹ | ✅ | ✅ | ✅ |
-| **HOT** | mainnet | native/Telegram app + relay¹ | — | ✅ | ✅ |
+| **MyNearWallet** | testnet + mainnet | browser redirect | yes | secure adapter redirect² | secure adapter redirect² |
+| **Intear** | testnet + mainnet | native app + WebSocket bridge¹ | yes | controller | controller |
+| **HOT** | mainnet | native/Telegram app + relay¹ | no | controller | controller |
 
 ¹ Resolves in place — no inbound deep link needed.
-² MyNearWallet signs per-transaction in the browser; use
-`MyNearWalletAdapter.buildTransactionUrl` / `buildSignMessageUrl` from
-`near_dart` for those flows.
+² Use `signMessage` / `completeSignMessage` and
+`signAndSendTransaction(s)` / `handleTransactionCallback`. URL-only builders
+do not open the pending correlated flow required by the secure completion APIs.
 
 > MyNearWallet remains fully supported until its announced sunset
 > (October 31, 2026). Intear and HOT are additional options, not replacements —
