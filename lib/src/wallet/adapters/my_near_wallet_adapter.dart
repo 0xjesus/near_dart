@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -124,6 +125,9 @@ class MyNearWalletAdapter implements WalletAdapter {
 
   _PendingMyNearWalletFlow? _pendingFlow;
   bool _signInAdmissionReserved = false;
+  int _signInGeneration = 0;
+  Future<void>? _activeSignInCompletion;
+  _UnacceptedMyNearWalletSignIn? _unacceptedSignIn;
 
   @override
   String get id => 'my-near-wallet';
@@ -187,6 +191,7 @@ class MyNearWalletAdapter implements WalletAdapter {
       throw const MyNearWalletException.flowInProgress();
     }
     _signInAdmissionReserved = true;
+    _unacceptedSignIn = null;
     _PendingMyNearWalletFlow? flow;
     KeyPairEd25519? ownedPendingKey;
     try {
@@ -240,6 +245,64 @@ class MyNearWalletAdapter implements WalletAdapter {
     }
   }
 
+  /// Cancels a pending sign-in and invalidates callback completion already
+  /// in flight.
+  ///
+  /// A callback key promoted by [completeSignIn] remains provisional until
+  /// [acceptCompletedSignIn] is called. Cancellation rolls that promotion
+  /// back without removing a key that another wallet has since replaced.
+  Future<bool> cancelPendingSignIn() async {
+    _signInGeneration++;
+    final flow = _pendingFlow;
+    if (flow != null && flow.operation == 'signIn') {
+      _finishWalletFlow(flow, failureCode: NearErrorCode.cancelled);
+    }
+    await keyStore.clearPendingKey();
+
+    final activeCompletion = _activeSignInCompletion;
+    if (activeCompletion != null) await activeCompletion;
+
+    final promotion = _unacceptedSignIn;
+    if (promotion == null) return false;
+    await _rollbackSignInPromotion(promotion);
+    return true;
+  }
+
+  /// Accepts the provisional key promotion returned by [completeSignIn].
+  ///
+  /// Controllers should call this only after their verified session state is
+  /// durably stored. Direct adapter users that do not use cancellation retain
+  /// the existing [completeSignIn] behavior.
+  void acceptCompletedSignIn(WalletAccount account) {
+    final promotion = _unacceptedSignIn;
+    if (promotion != null &&
+        promotion.account.accountId == account.accountId &&
+        promotion.account.publicKey == account.publicKey) {
+      _unacceptedSignIn = null;
+    }
+  }
+
+  Future<void> _rollbackSignInPromotion(
+    _UnacceptedMyNearWalletSignIn promotion,
+  ) async {
+    if (identical(_unacceptedSignIn, promotion)) {
+      _unacceptedSignIn = null;
+    }
+    final current = await keyStore.getKey(promotion.account.accountId);
+    if (current != null &&
+        current.publicKey.value != promotion.promotedKey.publicKey.value) {
+      return;
+    }
+    final previous = promotion.previousKey;
+    if (previous == null) {
+      if (current != null) {
+        await keyStore.removeKey(promotion.account.accountId);
+      }
+    } else {
+      await keyStore.setKey(promotion.account.accountId, previous);
+    }
+  }
+
   /// Completes sign-in from the wallet's callback [callbackUri].
   ///
   /// Parses `account_id`/`public_key`, promotes the pending key pair to a
@@ -250,13 +313,34 @@ class MyNearWalletAdapter implements WalletAdapter {
   /// Call this on app start (web: the initial URL) or when a deep link
   /// arrives (mobile).
   Future<WalletAccount?> completeSignIn(Uri callbackUri) async {
+    if (_activeSignInCompletion != null) return null;
+    final completion = Completer<void>();
+    _activeSignInCompletion = completion.future;
+    final generation = _signInGeneration;
+    try {
+      return await _completeSignIn(callbackUri, generation);
+    } finally {
+      if (identical(_activeSignInCompletion, completion.future)) {
+        _activeSignInCompletion = null;
+      }
+      completion.complete();
+    }
+  }
+
+  Future<WalletAccount?> _completeSignIn(
+    Uri callbackUri,
+    int generation,
+  ) async {
     final pendingKey = await keyStore.getPendingKey();
+    if (generation != _signInGeneration) return null;
     if (_pendingFlow == null && pendingKey != null) {
+      final correlationValue = await _signInCorrelationValue(pendingKey);
+      if (generation != _signInGeneration) return null;
       _openWalletFlow(
         'signIn',
         successUrl: config.successUrl,
         failureUrl: config.failureUrl,
-        correlationValue: await _signInCorrelationValue(pendingKey),
+        correlationValue: correlationValue,
       );
     }
     final flow = _pendingFlow;
@@ -310,13 +394,33 @@ class MyNearWalletAdapter implements WalletAdapter {
         await keyStore.clearPendingKey();
         return null;
       }
+      final previousKey = await keyStore.getKey(accountId);
+      if (generation != _signInGeneration) {
+        failureCode = NearErrorCode.cancelled;
+        return null;
+      }
       await keyStore.setKey(accountId, pending);
-      await keyStore.clearPendingKey();
-
       final account = WalletAccount(
         accountId: accountId,
         publicKey: pending.publicKey,
       );
+      final promotion = _UnacceptedMyNearWalletSignIn(
+        account: account,
+        promotedKey: pending,
+        previousKey: previousKey,
+      );
+      _unacceptedSignIn = promotion;
+      if (generation != _signInGeneration) {
+        failureCode = NearErrorCode.cancelled;
+        await _rollbackSignInPromotion(promotion);
+        return null;
+      }
+      await _clearPendingKeyIfOwned(pending);
+      if (generation != _signInGeneration) {
+        failureCode = NearErrorCode.cancelled;
+        await _rollbackSignInPromotion(promotion);
+        return null;
+      }
       return account;
     } catch (error, stackTrace) {
       final normalized = _normalizeMyNearError(error);
@@ -430,10 +534,10 @@ class MyNearWalletAdapter implements WalletAdapter {
     if (flow != null) {
       _finishWalletFlow(flow, failureCode: NearErrorCode.cancelled);
     }
+    await cancelPendingSignIn();
     for (final accountId in await keyStore.accounts()) {
       await keyStore.removeKey(accountId);
     }
-    await keyStore.clearPendingKey();
   }
 
   @override
@@ -1010,6 +1114,18 @@ class _PendingMyNearWalletFlow {
   final SignMessageParams? signMessageRequest;
   final DateTime startedAt;
   bool callbackReceived = false;
+}
+
+class _UnacceptedMyNearWalletSignIn {
+  const _UnacceptedMyNearWalletSignIn({
+    required this.account,
+    required this.promotedKey,
+    required this.previousKey,
+  });
+
+  final WalletAccount account;
+  final KeyPairEd25519 promotedKey;
+  final KeyPairEd25519? previousKey;
 }
 
 /// Exception thrown when waiting for a callback from the wallet.

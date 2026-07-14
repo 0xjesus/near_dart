@@ -282,6 +282,61 @@ void main() {
       },
     );
 
+    test('cancellation invalidates a callback during key promotion', () async {
+      final keyStore = _BlockingPromotionKeyStore();
+      adapter = MyNearWalletAdapter(
+        config: MyNearWalletConfig(
+          contractId: AccountId('contract.testnet'),
+          successUrl: 'myapp://wallet/success',
+          failureUrl: 'myapp://wallet/failure',
+          network: MyNearWalletNetwork.testnet,
+        ),
+        keyStore: keyStore,
+        launchUrl: (uri) async {
+          launchedWalletUrls.add(uri);
+          return true;
+        },
+      );
+      await adapter.signIn(contractId: AccountId('contract.testnet'));
+      final pending = await keyStore.getPendingKey();
+      final accountId = AccountId('cancelled.testnet');
+      final callback = withQuery(launchedCallback('success_url'), {
+        'account_id': accountId.value,
+        'public_key': pending!.publicKey.value,
+      });
+
+      final completion = adapter.completeSignIn(callback);
+      await keyStore.promotionStarted.future;
+      final cancellation = adapter.cancelPendingSignIn();
+      keyStore.releasePromotion.complete();
+
+      expect(await completion, isNull);
+      await cancellation;
+      expect(await keyStore.getPendingKey(), isNull);
+      expect(await keyStore.getKey(accountId), isNull);
+    });
+
+    test(
+      'signOut cannot let later cancellation restore a replaced key',
+      () async {
+        final accountId = AccountId('alice.testnet');
+        final previousKey = await KeyPairEd25519.generate();
+        await adapter.keyStore.setKey(accountId, previousKey);
+        await adapter.signIn(contractId: AccountId('contract.testnet'));
+        final pending = await adapter.keyStore.getPendingKey();
+        final callback = withQuery(launchedCallback('success_url'), {
+          'account_id': accountId.value,
+          'public_key': pending!.publicKey.value,
+        });
+        expect(await adapter.completeSignIn(callback), isNotNull);
+
+        await adapter.signOut();
+        await adapter.cancelPendingSignIn();
+
+        expect(await adapter.keyStore.getKey(accountId), isNull);
+      },
+    );
+
     test('uses one secure correlation value for both sign-in routes', () async {
       adapter = MyNearWalletAdapter(
         config: MyNearWalletConfig(
@@ -1291,4 +1346,37 @@ class _BarrierKeyStore implements KeyStore {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
   }
+}
+
+class _BlockingPromotionKeyStore implements KeyStore {
+  final InMemoryKeyStore _delegate = InMemoryKeyStore();
+  final promotionStarted = Completer<void>();
+  final releasePromotion = Completer<void>();
+
+  @override
+  Future<void> clearPendingKey() => _delegate.clearPendingKey();
+
+  @override
+  Future<List<AccountId>> accounts() => _delegate.accounts();
+
+  @override
+  Future<KeyPairEd25519?> getKey(AccountId accountId) =>
+      _delegate.getKey(accountId);
+
+  @override
+  Future<KeyPairEd25519?> getPendingKey() => _delegate.getPendingKey();
+
+  @override
+  Future<void> removeKey(AccountId accountId) => _delegate.removeKey(accountId);
+
+  @override
+  Future<void> setKey(AccountId accountId, KeyPairEd25519 keyPair) async {
+    promotionStarted.complete();
+    await releasePromotion.future;
+    await _delegate.setKey(accountId, keyPair);
+  }
+
+  @override
+  Future<void> setPendingKey(KeyPairEd25519 keyPair) =>
+      _delegate.setPendingKey(keyPair);
 }

@@ -143,6 +143,7 @@ class NearWalletController extends ChangeNotifier {
   final IntearWalletAdapterBuilder? _intearWalletAdapterBuilder;
   final HotWalletAdapterBuilder? _hotWalletAdapterBuilder;
   final NearWalletLinkSource? _linkSource;
+  MyNearWalletAdapter? _myNearWalletAdapter;
 
   static const _optionPrefsKey = 'near_wallet_connect_option';
   static const _accountPrefsKey = 'near_wallet_connect_account';
@@ -155,6 +156,8 @@ class NearWalletController extends ChangeNotifier {
   bool _busy = false;
   NearSdkException? _lastException;
   StreamSubscription<Uri>? _linkSub;
+  int _myNearWalletFlowGeneration = 0;
+  final Set<Completer<void>> _activeMyNearWalletCallbacks = {};
 
   /// The connected account, or null.
   WalletAccount? get account => _account;
@@ -190,12 +193,16 @@ class NearWalletController extends ChangeNotifier {
   // ── adapters ─────────────────────────────────────────────────────────────
 
   MyNearWalletAdapter _mnwAdapter() {
+    final existing = _myNearWalletAdapter;
+    if (existing != null) return existing;
     final builder = _myNearWalletAdapterBuilder;
-    if (builder != null) return builder(logger);
+    if (builder != null) {
+      return _myNearWalletAdapter = builder(logger);
+    }
     final base = kIsWeb
         ? Uri.base.replace(query: '').removeFragment().toString()
         : '$callbackScheme://callback';
-    return MyNearWalletAdapter(
+    return _myNearWalletAdapter = MyNearWalletAdapter(
       config: MyNearWalletConfig(
         contractId: contractId,
         successUrl: kIsWeb ? base : '$base/success',
@@ -440,6 +447,9 @@ class NearWalletController extends ChangeNotifier {
   ///
   /// MyNearWallet redirects to the browser (the result arrives via [init]);
   /// Intear and HOT open their native apps and resolve in place.
+  /// Selecting Intear or HOT invalidates any pending MyNearWallet sign-in
+  /// before opening the new wallet. A failed selection preserves the active
+  /// account session, but the cancelled browser flow must be restarted.
   Future<void> connect({
     NearWalletOption wallet = NearWalletOption.myNearWallet,
   }) async {
@@ -455,6 +465,9 @@ class NearWalletController extends ChangeNotifier {
     }
     _set(busy: true, clearException: true);
     try {
+      if (wallet != NearWalletOption.myNearWallet) {
+        await _cancelPendingMyNearWalletSignIn();
+      }
       switch (wallet) {
         case NearWalletOption.myNearWallet:
           await _mnwAdapter().signIn(
@@ -543,52 +556,138 @@ class NearWalletController extends ChangeNotifier {
   }
 
   Future<void> _handleCallback(Uri uri) async {
+    final operation = Completer<void>();
+    _activeMyNearWalletCallbacks.add(operation);
+    final generation = _myNearWalletFlowGeneration;
+    final previousAccount = _account;
+    final previousOption = _walletOption;
+    final adapter = _mnwAdapter();
+    var sessionWriteStarted = false;
+    try {
+      await _handleCallbackForGeneration(
+        uri,
+        adapter: adapter,
+        generation: generation,
+        previousAccount: previousAccount,
+        previousOption: previousOption,
+        onSessionWrite: () => sessionWriteStarted = true,
+      );
+    } catch (error) {
+      await adapter.cancelPendingSignIn();
+      if (generation != _myNearWalletFlowGeneration) return;
+      if (sessionWriteStarted) {
+        await _restorePersistedSession(previousAccount, previousOption);
+      }
+      _setException(_normalizeControllerError(error), busy: false);
+    } finally {
+      _activeMyNearWalletCallbacks.remove(operation);
+      operation.complete();
+    }
+  }
+
+  Future<void> _handleCallbackForGeneration(
+    Uri uri, {
+    required MyNearWalletAdapter adapter,
+    required int generation,
+    required WalletAccount? previousAccount,
+    required NearWalletOption? previousOption,
+    required VoidCallback onSessionWrite,
+  }) async {
     // Only a pending sign-in makes this callback ours. Other wallet
     // callbacks can carry the same parameters (e.g. MyNearWallet's /sign
     // appends account_id next to transactionHashes) and must not clobber
     // an existing session.
     final signInPending = await keyStore.getPendingKey() != null;
-    if (!signInPending && _account != null) return;
+    if (generation != _myNearWalletFlowGeneration || !signInPending) return;
 
     _set(busy: true, clearException: true);
-    try {
-      final account = await _mnwAdapter().completeSignIn(uri);
-      if (account != null) {
+    final account = await adapter.completeSignIn(uri);
+    if (generation != _myNearWalletFlowGeneration) {
+      await adapter.cancelPendingSignIn();
+      return;
+    }
+    if (account != null) {
+      try {
         await _verifyNewAccount(
           account,
           requireFunctionCallScope: true,
-          removeStoredKeyOnFailure: true,
+          removeStoredKeyOnFailure: false,
           clearPersistedSessionOnFailure: true,
         );
-        await _saveSession(
-          NearWalletOption.myNearWallet,
-          accountId: account.accountId.value,
-        );
-        _account = account;
-        _walletOption = NearWalletOption.myNearWallet;
-        _set(busy: false);
-        _logConnected(NearWalletOption.myNearWallet);
-      } else {
-        if (signInPending) {
-          if (_account == null) await _clearPersistedSession();
-          _setException(
-            const NearSdkException(
-              code: NearErrorCode.cancelled,
-              message: 'Sign-in cancelled',
-            ),
-            busy: false,
-          );
-        } else {
-          _set(busy: false, clearException: true);
+      } catch (_) {
+        final rolledBack = await adapter.cancelPendingSignIn();
+        if (!rolledBack) {
+          final storedKey = await keyStore.getKey(account.accountId);
+          if (storedKey?.publicKey == account.publicKey) {
+            await keyStore.removeKey(account.accountId);
+          }
         }
+        rethrow;
       }
-    } catch (error) {
-      _setException(_normalizeControllerError(error), busy: false);
+      if (generation != _myNearWalletFlowGeneration) {
+        await adapter.cancelPendingSignIn();
+        return;
+      }
+      onSessionWrite();
+      await _saveSession(
+        NearWalletOption.myNearWallet,
+        accountId: account.accountId.value,
+      );
+      if (generation != _myNearWalletFlowGeneration) {
+        await adapter.cancelPendingSignIn();
+        await _restorePersistedSession(previousAccount, previousOption);
+        return;
+      }
+      adapter.acceptCompletedSignIn(account);
+      _account = account;
+      _walletOption = NearWalletOption.myNearWallet;
+      _set(busy: false);
+      _logConnected(NearWalletOption.myNearWallet);
+      return;
     }
+
+    final stillPending = await keyStore.getPendingKey() != null;
+    if (generation != _myNearWalletFlowGeneration || stillPending) return;
+    if (_account == null) await _clearPersistedSession();
+    _setException(
+      const NearSdkException(
+        code: NearErrorCode.cancelled,
+        message: 'Sign-in cancelled',
+      ),
+      busy: false,
+    );
+  }
+
+  Future<void> _cancelPendingMyNearWalletSignIn() async {
+    _myNearWalletFlowGeneration++;
+    await _mnwAdapter().cancelPendingSignIn();
+    while (_activeMyNearWalletCallbacks.isNotEmpty) {
+      await Future.wait(
+        _activeMyNearWalletCallbacks.map((operation) => operation.future),
+      );
+    }
+  }
+
+  Future<void> _restorePersistedSession(
+    WalletAccount? account,
+    NearWalletOption? option,
+  ) async {
+    if (account == null || option == null) {
+      await _clearPersistedSession();
+      return;
+    }
+    await _saveSession(
+      option,
+      accountId: account.accountId.value,
+      hotPublicKey: option == NearWalletOption.hot
+          ? account.publicKey.value
+          : null,
+    );
   }
 
   /// Disconnects and clears the stored session.
   Future<void> disconnect() async {
+    await _cancelPendingMyNearWalletSignIn();
     final account = _account;
     if (account != null && _walletOption != NearWalletOption.hot) {
       await keyStore.removeKey(account.accountId);
@@ -596,6 +695,7 @@ class NearWalletController extends ChangeNotifier {
     await _clearPersistedSession();
     _account = null;
     _walletOption = null;
+    _busy = false;
     _lastException = null;
     notifyListeners();
     emitNearLog(
@@ -817,6 +917,7 @@ class NearWalletController extends ChangeNotifier {
   @override
   void dispose() {
     _linkSub?.cancel();
+    _myNearWalletAdapter?.dispose();
     super.dispose();
   }
 }

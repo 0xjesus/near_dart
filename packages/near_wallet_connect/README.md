@@ -140,9 +140,18 @@ For lifecycle-safe ChangeNotifier, Provider, Riverpod, and Bloc/Cubit setups,
 see the
 [Flutter architecture recipes](https://github.com/0xjesus/near_dart/blob/main/docs/flutter-architectures.md).
 
-Both security options above are opt-in. The first verifies fresh and restored
-account/key pairs on chain; the second confirms returned transaction hashes
-with `txStatus`. Confirmation does not authenticate unsigned relay metadata.
+Both `NearWalletSecurityPolicy` fields are opt-in:
+
+```dart
+securityPolicy: const NearWalletSecurityPolicy(
+  verifyAccessKeyOnConnect: true,
+  transactionFinality: TxExecutionStatus.final_,
+),
+```
+
+`verifyAccessKeyOnConnect` verifies fresh and restored account/key pairs on
+chain. `transactionFinality` confirms returned transaction hashes with
+`txStatus`. Confirmation does not authenticate unsigned relay metadata.
 See the
 [security model](https://github.com/0xjesus/near_dart/blob/main/docs/security.md)
 for wallet-specific scope and residual trust.

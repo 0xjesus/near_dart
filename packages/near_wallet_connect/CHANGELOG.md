@@ -28,6 +28,8 @@
 - Persist the authentic HOT public key instead of restoring a placeholder.
 - Persist and restore the exact active wallet, account, and network tuple. A
   disconnect or wallet switch no longer falls back to unrelated stored keys.
+- Cancel and invalidate pending MyNearWallet sign-ins on disconnect or wallet
+  selection so late callbacks cannot replace the active session.
 - Emit `transactionSubmitted` before optional confirmation and avoid duplicate
   controller terminal failures after adapter failures.
 
