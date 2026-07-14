@@ -374,18 +374,57 @@ switch (result) {
   case RpcSuccess(:final value):
     print('Balance: ${value.amount.toNear()}');
   case RpcFailure(:final error):
-    switch (error.kind) {
-      case RpcErrorKind.rpcError:
-        print('RPC error: ${error.message}');
-      case RpcErrorKind.networkError:
-        print('Network error');
-      case RpcErrorKind.timeout:
-        print('Request timeout');
+    switch (error.nearErrorCode) {
+      case NearErrorCode.rpcTimeout:
+        scheduleRetry();
+      case NearErrorCode.rateLimited:
+        useBackoff();
       default:
-        print('Error: ${error.message}');
+        showError(error.message);
     }
 }
 ```
+
+## Diagnostics And Wallet Security
+
+Register a `NearLogger` at construction time and copy only explicitly safe
+operational fields into telemetry:
+
+```dart
+void nearLogger(NearLogEvent event) {
+  final safe = <String, Object?>{
+    if (event.metadata['durationMs'] case final value?) 'durationMs': value,
+    if (event.metadata['statusCode'] case final value?) 'statusCode': value,
+    if (event.metadata['failureCode'] case final value?) 'failureCode': value,
+  };
+  print('${event.type.name} ${event.operation} $safe');
+}
+
+final client = NearRpcClient.mainnet(logger: nearLogger);
+```
+
+Do not add payloads, callback URLs, messages, nonces, signatures,
+authorization values, or key material in a logger callback. For Flutter wallet
+flows, `near_wallet_connect` provides opt-in on-chain policy:
+
+```dart
+import 'package:near_wallet_connect/near_wallet_connect.dart';
+
+final wallet = NearWalletController(
+  network: MyNearWalletNetwork.mainnet,
+  contractId: AccountId('app.near'),
+  logger: nearLogger,
+  securityPolicy: const NearWalletSecurityPolicy(
+    verifyAccessKeyOnConnect: true,
+    transactionFinality: TxExecutionStatus.final_,
+  ),
+);
+```
+
+The defaults preserve existing behavior and perform neither check. Read the
+[security model](https://github.com/0xjesus/near_dart/blob/main/docs/security.md)
+and [troubleshooting guide](https://github.com/0xjesus/near_dart/blob/main/docs/troubleshooting.md)
+for exact guarantees, relay caveats, and typed error handling.
 
 ## Example App
 

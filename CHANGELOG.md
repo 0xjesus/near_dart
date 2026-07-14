@@ -1,3 +1,44 @@
+## Unreleased
+
+### Security
+
+- Enforce strict Ed25519 public keys and signatures: canonical, non-identity
+  prime-order points, a strict signature `R` point, and a canonical scalar.
+- Correlate MyNearWallet sign-in, transaction, sign-message, and owner
+  callbacks with one-shot per-flow values; reject foreign, concurrent, and
+  replayed callbacks without consuming a later flow.
+- Verify MyNearWallet secure sign-message callbacks against the original
+  NEP-413 request and verify wallet-produced Intear/HOT NEP-413 signatures
+  before returning them.
+
+### Features
+
+- Add structured, redacted `NearLogger` lifecycle events across RPC, Intents,
+  and wallet adapters.
+- Add stable `NearErrorCode`, `NearSdkException`, `nearErrorFrom`, and typed RPC
+  error classification.
+
+### Fixes
+
+- Normalize wallet rejection, malformed response, timeout, rate-limit,
+  transport, account-mismatch, and signature-verification failures.
+- Reject malformed/cross-operation wallet callbacks and canonicalize
+  MyNearWallet transaction-hash handling without treating callback outcomes as
+  authenticated chain results.
+
+### Documentation
+
+- Document diagnostics, typed recovery, strict signature guarantees, callback
+  correlation, relay trust, web/XSS storage risk, and opt-in wallet checks.
+
+### Migration
+
+- Invalid or low-order Ed25519 fixtures that were previously accepted must be
+  replaced with canonical prime-order keys and signatures.
+- Apps must pass MyNearWallet callback URIs unchanged to the matching secure
+  completion API; reconstructed callbacks without the SDK correlation value
+  are rejected.
+
 ## 0.5.0
 
 - Add experimental NEAR Intents support: typed 1Click REST client

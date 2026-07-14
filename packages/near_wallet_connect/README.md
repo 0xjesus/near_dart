@@ -27,6 +27,10 @@ final wallet = NearWalletController(
   network: MyNearWalletNetwork.testnet,
   contractId: AccountId('app.testnet'),
   callbackScheme: 'myapp', // your mobile deep-link scheme
+  securityPolicy: const NearWalletSecurityPolicy(
+    verifyAccessKeyOnConnect: true,
+    transactionFinality: TxExecutionStatus.final_,
+  ),
 );
 
 @override
@@ -81,6 +85,53 @@ That's it. See [`example/`](example/) for a complete minimal app.
 For lifecycle-safe ChangeNotifier, Provider, Riverpod, and Bloc/Cubit setups,
 see the
 [Flutter architecture recipes](https://github.com/0xjesus/near_dart/blob/main/docs/flutter-architectures.md).
+
+Both security options above are opt-in. The first verifies fresh and restored
+account/key pairs on chain; the second confirms returned transaction hashes
+with `txStatus`. Confirmation does not authenticate unsigned relay metadata.
+See the
+[security model](https://github.com/0xjesus/near_dart/blob/main/docs/security.md)
+for wallet-specific scope and residual trust.
+
+## Diagnostics And Typed Errors
+
+Pass an allowlisting logger to the controller. Never add callback URLs,
+messages, nonces, signatures, request bodies, credentials, or key material.
+
+```dart
+void nearLogger(NearLogEvent event) {
+  final safe = <String, Object?>{
+    if (event.metadata['durationMs'] case final value?) 'durationMs': value,
+    if (event.metadata['failureCode'] case final value?) 'failureCode': value,
+    if (event.metadata['networkId'] case final value?) 'networkId': value,
+  };
+  print('${event.type.name} ${event.operation} $safe');
+}
+
+final wallet = NearWalletController(
+  network: MyNearWalletNetwork.testnet,
+  contractId: AccountId('app.testnet'),
+  logger: nearLogger,
+);
+
+switch (wallet.lastException?.code) {
+  case NearErrorCode.userRejected:
+    showRetry();
+  case NearErrorCode.rpcTimeout:
+    showRetryLater();
+  case NearErrorCode.accessKeyNotFound || NearErrorCode.accessKeyMismatch:
+    showReconnect();
+  case null:
+    break;
+  default:
+    showError(wallet.error ?? 'Wallet operation failed');
+}
+```
+
+`wallet.error` remains the compatible `String?` display message;
+`wallet.lastException` is the typed `NearSdkException?`. See
+[Troubleshooting](https://github.com/0xjesus/near_dart/blob/main/docs/troubleshooting.md#safe-diagnostics-and-typed-errors)
+for recovery guidance by error code.
 
 ## Customize the UI
 
@@ -178,11 +229,16 @@ no callback setup on any platform (responses arrive over their bridges).
   function-call key, so `signer()` works here too.
 - **HOT**: requests are queued on HOT's relay and opened via `hotwallet://`;
   the app polls the relay for the response.
+- Intear and HOT wallet-produced NEP-413 signatures are verified locally.
+  Connect and transaction metadata are not all signed; relays remain
+  availability dependencies.
 - Keys persist via **`SecureKeyStore`** by default (Android Keystore /
   Apple Keychain / Windows DPAPI / Linux libsecret); on web — where no OS
   secret storage exists — a plain `SharedPrefsKeyStore` is used. Sessions
   from older versions migrate to secure storage automatically. Details:
   [docs/security.md](https://github.com/0xjesus/near_dart/blob/main/docs/security.md).
+- Legacy HOT sessions that predate authentic public-key persistence are
+  cleared during `init()` and require one reconnect.
 
 ## License
 

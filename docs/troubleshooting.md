@@ -1,90 +1,191 @@
 # Troubleshooting
 
-## Web Callback Did Not Complete
+## Safe diagnostics and typed errors
 
-Check:
+Register one allowlisting logger with RPC clients or the wallet controller.
+Do not add raw request/response objects, callback URLs, messages, nonces,
+signatures, authorization values, or key material in the callback.
 
-- `controller.init()` runs before rendering wallet-dependent UI.
-- The callback URL matches the configured success URL.
-- You are parsing the URL fragment for MyNearWallet sign-message callbacks.
-- Browser storage was not cleared between redirect and return.
+```dart
+const allowedMetadata = <String>{
+  'attempt',
+  'endpointCount',
+  'statusCode',
+  'durationMs',
+  'walletId',
+  'outcome',
+  'failureCode',
+  'networkId',
+  'transactionCount',
+  'waitUntil',
+};
 
-For web, `SharedPrefsKeyStore` is plain browser storage. Treat web sessions as
-lower trust and scope function-call keys tightly.
+void nearLogger(NearLogEvent event) {
+  final safeMetadata = Map<String, Object?>.fromEntries(
+    event.metadata.entries.where(
+      (entry) => allowedMetadata.contains(entry.key),
+    ),
+  );
+  print(
+    '${event.level.name} ${event.type.name} '
+    '${event.operation} $safeMetadata',
+  );
+}
 
-## Android Opens Wallet But Does Not Return
+final controller = NearWalletController(
+  network: MyNearWalletNetwork.testnet,
+  contractId: AccountId('app.testnet'),
+  logger: nearLogger,
+);
+```
 
-Check:
+`controller.error` remains the compatible `String?` UI message.
+`controller.lastException` is the typed `NearSdkException?`; use its stable
+`code` and `retryable` values for behavior rather than matching message text.
 
-- `AndroidManifest.xml` has a matching scheme/host intent filter.
-- The app was installed after changing the manifest.
-- The callback scheme passed to `NearWalletController(callbackScheme:)` matches
-  the manifest.
-- The release manifest includes `INTERNET` permission.
+```dart
+final failure = controller.lastException;
+if (failure != null) {
+  switch (failure.code) {
+    case NearErrorCode.wrongNetwork:
+      showNetworkPicker();
+    case NearErrorCode.userRejected:
+      showTryAgain();
+    case NearErrorCode.rpcTimeout when failure.retryable:
+      scheduleRetry();
+    case NearErrorCode.accessKeyNotFound ||
+        NearErrorCode.accessKeyMismatch:
+      await controller.disconnect();
+      showReconnect();
+    default:
+      showError(controller.error ?? 'Wallet operation failed');
+  }
+}
+```
 
-## iOS Opens App But Account Is Not Connected
+## Wrong network
 
-Check:
+`NearErrorCode.wrongNetwork` means the selected wallet is unavailable on the
+controller network. HOT is mainnet-only. Keep the current controller network
+and wallet picker in sync; do not silently redirect a testnet operation to
+mainnet.
 
-- `CFBundleURLTypes` includes the callback scheme.
-- The wallet callback URL path matches the configured callback.
-- You are not handling the deep link before `controller.init()` has restored
-  the pending key.
+## User rejection
 
-## User Rejected Wallet Request
+`NearErrorCode.userRejected` is a completed user decision, not a transport
+failure. Keep a visible retry path and do not automatically retry approval
+prompts. A rejected non-sign-in callback must not clear an existing session.
 
-Wallets may return different rejection payloads. Use `controller.error` for
-UI, and keep a retry path visible. Never silently clear a valid existing
-session for a non-sign-in callback.
+## Timeout or unavailable relay/RPC
 
-## Function-Call Key Cannot Pay
+`rpcTimeout`, `rpcUnavailable`, and `rateLimited` may be retryable. Preserve
+the user's context, use bounded backoff, and let the user cancel. Before
+retrying a transaction submission, query known transaction hashes or account
+state so an uncertain response does not cause a duplicate action.
+
+Intear's bridge and HOT's relay can delay or drop messages. A timeout does not
+prove that the wallet or chain did nothing.
+
+## Access key missing or mismatched
+
+With `verifyAccessKeyOnConnect: true`:
+
+- `accessKeyNotFound` means `view_access_key` did not find the returned key for
+  that account at final block finality.
+- `accessKeyMismatch` means a MyNearWallet/Intear key is not a function-call
+  key for the configured contract and method scope.
+
+Fresh verification failures are not published as connected sessions. Definite
+missing/mismatch failures on restore clear persisted session state; reconnect
+to provision or select an authorized key. Retryable RPC failures retain the
+credentials for a later `init()` attempt but leave the controller disconnected.
+
+## MyNearWallet callback correlation failed
+
+`walletResponseInvalid` or `missingCallback` during completion commonly means
+the callback did not match the exact pending route/correlation value, was
+already consumed, belongs to another operation, or was reconstructed by app
+code.
+
+- Pass the complete callback URI received from the platform unchanged.
+- Start only one MyNearWallet operation at a time.
+- Keep the pending key store across redirect and call `controller.init()` once
+  before rendering wallet-dependent UI.
+- Do not call the legacy sign-message parser for a pending secure flow; use
+  `completeSignMessage` with the original request.
+- Treat replayed or foreign callbacks as rejected input. Do not disable the
+  correlation check to recover a session.
+
+## Transaction confirmation failed
+
+With `transactionFinality` enabled, `sendTransactions` can fail after the
+wallet has returned an outcome:
+
+- `walletResponseInvalid`: no usable transaction hash was returned.
+- `transactionFailed` or `insufficientBalance`: RPC reported an unknown or
+  failed on-chain status.
+- `rpcTimeout`, `rpcUnavailable`, or `rateLimited`: confirmation itself could
+  not complete.
+
+Do not resubmit immediately. Query the returned hash, inspect the explorer, or
+check application state. Successful confirmation returns the original wallet
+outcome list; failed confirmation throws and leaves the typed failure in
+`controller.lastException`.
+
+## Web callback did not complete
+
+Check that `controller.init()` ran, the entire wallet-returned URL reached the
+application, and browser storage was not cleared between redirect and return.
+MyNearWallet sign-message fields may be in the fragment. The SDK's web
+`SharedPrefsKeyStore` is plain same-origin storage; successful XSS can read or
+use it, so fix XSS/CSP issues rather than treating storage as a secret vault.
+
+## Android opens wallet but does not return
+
+Check the manifest scheme/host intent filter, reinstall after manifest
+changes, keep `callbackScheme` consistent, and include `INTERNET` permission
+in the release manifest.
+
+## iOS opens app but account is not connected
+
+Check `CFBundleURLTypes`, the configured callback route, and initialization
+order. The pending key and correlation value must survive until
+`controller.init()` processes the link.
+
+## HOT session disappeared after upgrade
+
+Older HOT controller sessions persisted only an account ID. Current versions
+require the authentic account/public-key pair so optional on-chain verification
+cannot rely on a placeholder key. `init()` clears legacy HOT state that lacks a
+valid public key; ask the user to reconnect once.
+
+## Function-call key cannot pay
 
 Function-call keys can pay gas but cannot attach deposits. Use wallet-signed
-transactions for transfers, token transfers that require one yocto, storage
-deposits, or payable contract calls.
+transactions for transfers, one-yocto calls, storage deposits, or other payable
+calls.
 
-## Transaction Signs But Fails On Chain
+## Transaction signs but fails on chain
 
-Common causes:
+Check balance, function-call method scope, deposit, receiver network, contract
+logs, and explorer status. `TxExecutionStatus.final_` changes how long RPC
+waits; it does not turn a failed transaction into a success.
 
-- Account has insufficient balance for gas or deposit.
-- Method is not in the function-call key scope.
-- Attached deposit is missing or wrong.
-- Receiver account exists on a different network.
-- The contract panicked; inspect logs and explorer status.
+## RPC works on mobile but fails on web
 
-Use `waitUntil: TxExecutionStatus.final_` when your UX needs finality instead
-of optimistic execution.
+Check provider CORS policy, browser extensions, corporate filtering, and
+whether the configured endpoint supports browser requests. Use a
+browser-compatible endpoint; never work around CORS by exposing credentials.
 
-## RPC Works On Mobile But Fails On Web
+## Invalid account ID, public key, or signature
 
-Likely causes:
+Account IDs use nearcore grammar. Ed25519 public keys must be canonical,
+non-identity prime-order points, and signatures must have a strict `R` point
+and canonical scalar. Replace invalid fixtures rather than bypassing
+validation.
 
-- RPC provider CORS policy blocks browser requests.
-- Browser extension or corporate network blocks the endpoint.
-- The app is using an endpoint that works server-side but not from browsers.
+## NEAR Intents quote fails
 
-Try FastNear defaults or a browser-compatible RPC provider.
-
-## Invalid Account ID Or Public Key
-
-`near_dart >=0.4.0` validates account IDs and public keys strictly. Placeholder
-values that used to pass now throw early. Use valid testnet fixture keys in
-tests instead of strings like `ed25519:FakeKey`.
-
-## NEAR Intents Quote Fails
-
-Check:
-
-- NEAR Intents is mainnet infrastructure; there is no public testnet.
-- Dry quotes (`dry: true`) do not create a deposit address.
-- `amount` is in smallest units, not a decimal string.
-- `recipientType`, `refundType`, and address format match the destination.
-- Do not ship partner API keys in mobile binaries.
-
-## HOT Or Intear Relay Trust
-
-Relays and bridges can delay or drop transport messages. For anything valuable,
-verify wallet signatures where available and confirm transaction hashes through
-RPC.
-
+NEAR Intents uses mainnet infrastructure. Confirm smallest-unit amounts,
+address formats, recipient/refund types, and whether a dry quote was intended.
+Do not ship partner API credentials in a client binary.

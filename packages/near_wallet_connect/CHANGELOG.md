@@ -1,3 +1,43 @@
+## Unreleased
+
+### Security
+
+- Add opt-in `verifyAccessKeyOnConnect` checks for fresh and restored sessions.
+  MyNearWallet/Intear keys must match the configured function-call scope; HOT
+  account/key pairs are checked for on-chain existence.
+- Add opt-in `transactionFinality` confirmation for every distinct hash
+  returned by Intear/HOT `sendTransactions`, with typed on-chain failure
+  handling and unchanged original outcomes after successful confirmation.
+- Verify wallet-produced Intear/HOT NEP-413 signatures through the hardened
+  `near_dart` adapters. Relay connect and transaction metadata remain unsigned.
+
+### Features
+
+- Add `NearWalletSecurityPolicy` and injectable `NearWalletSecurity`.
+- Add structured `NearLogger` propagation and typed
+  `NearWalletController.lastException`; the existing `controller.error`
+  remains the compatible `String?` message.
+
+### Fixes
+
+- Process initial and runtime links through one callback lifecycle, preserve an
+  existing session for unrelated callbacks, and clear failed promoted keys.
+- Restore wallet sessions only after configured verification; retain
+  credentials on retryable RPC failures while leaving the controller
+  disconnected.
+- Persist the authentic HOT public key instead of restoring a placeholder.
+
+### Documentation
+
+- Document diagnostics allowlisting, wallet security policy, callback replay
+  protection, relay trust, confirmation failures, and browser storage risk.
+
+### Migration
+
+- Legacy HOT sessions that contain only an account ID are cleared during
+  `init()` and require the user to reconnect once so an authentic account/key
+  pair can be persisted.
+
 ## 0.4.0
 
 - `NearConnectButton` now supports custom builders for disconnected,
