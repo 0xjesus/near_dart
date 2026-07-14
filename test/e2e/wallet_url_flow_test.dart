@@ -10,6 +10,27 @@ import 'dart:convert';
 import 'package:test/test.dart';
 import 'package:near_dart/near_dart.dart';
 
+Uri _launchedCallback(Uri walletUrl, String parameter) {
+  return Uri.parse(walletUrl.queryParameters[parameter]!);
+}
+
+Uri _withWalletQuery(Uri callback, Map<String, String> values) {
+  return callback.replace(
+    queryParameters: <String, Object>{
+      ...callback.queryParametersAll,
+      ...values,
+    },
+  );
+}
+
+Matcher get _throwsPendingCallback => throwsA(
+  isA<NearSdkException>().having(
+    (error) => error.code,
+    'code',
+    NearErrorCode.missingCallback,
+  ),
+);
+
 void main() {
   group('E2E: MyNearWallet Sign-In Flow', () {
     late MyNearWalletAdapter adapter;
@@ -56,10 +77,10 @@ void main() {
         // Step 2: the wallet redirects back with the account and the key it
         // provisioned.
         final account = await adapter.completeSignIn(
-          Uri.parse(
-            'https://myapp.com/wallet/success'
-            '?account_id=alice.near&public_key=$provisionedKey',
-          ),
+          _withWalletQuery(_launchedCallback(loginUrl, 'success_url'), {
+            'account_id': 'alice.near',
+            'public_key': provisionedKey,
+          }),
         );
 
         // Step 3: the account is connected and its private key is stored, so
@@ -84,9 +105,13 @@ void main() {
 
       // Wallet returns a different public key than the one we generated.
       final account = await adapter.completeSignIn(
-        Uri.parse(
-          'https://myapp.com/wallet/success'
-          '?account_id=alice.near&public_key=ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+        _withWalletQuery(
+          _launchedCallback(launchedUrls.single, 'success_url'),
+          {
+            'account_id': 'alice.near',
+            'public_key':
+                'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
+          },
         ),
       );
 
@@ -97,7 +122,10 @@ void main() {
     test('completeSignIn returns null on a failure callback', () async {
       await adapter.signIn(contractId: AccountId('app.near'));
       final account = await adapter.completeSignIn(
-        Uri.parse('https://myapp.com/wallet/failure?errorCode=user_cancelled'),
+        _withWalletQuery(
+          _launchedCallback(launchedUrls.single, 'failure_url'),
+          {'errorCode': 'user_cancelled'},
+        ),
       );
       expect(account, isNull);
       expect(await adapter.isSignedIn(), isFalse);
@@ -136,12 +164,13 @@ void main() {
       );
     });
 
-    test('complete transfer transaction URL flow', () {
-      // Step 1: Create a fully-formed transfer transaction (MyNearWallet
-      // signs it, so it must carry publicKey, nonce and blockHash).
-      final transaction = Transaction(
+    Transaction transaction({
+      String receiverId = 'bob.testnet',
+      List<Action>? actions,
+    }) {
+      return Transaction(
         signerId: AccountId('alice.testnet'),
-        receiverId: AccountId('bob.testnet'),
+        receiverId: AccountId(receiverId),
         publicKey: PublicKey(
           'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj',
         ),
@@ -149,63 +178,81 @@ void main() {
         blockHash: const CryptoHash(
           '244ZQ9cgj3CQ6bWBdytfrJMuMQ1jdXLFGnr4HhvtCTnM',
         ),
-        actions: [TransferAction(deposit: NearToken.fromNear(5))],
+        actions: actions ?? [TransferAction(deposit: NearToken.fromNear(5))],
       );
+    }
 
-      // Step 2: Build transaction URL
-      final txUrl = adapter.buildTransactionUrl(
-        transactions: [transaction],
-        callbackUrl: 'myapp://tx/result',
+    test('complete transfer transaction URL flow', () async {
+      // Step 1: Create a fully-formed transfer transaction (MyNearWallet
+      // signs it, so it must carry publicKey, nonce and blockHash).
+      final transfer = transaction();
+
+      // Step 2: Launch the transaction flow and inspect the emitted URL.
+      await expectLater(
+        adapter.signAndSendTransaction(
+          transaction: transfer,
+          callbackUrl: 'myapp://tx/result',
+        ),
+        _throwsPendingCallback,
       );
+      final txUrl = launchedUrls.single;
+      final emittedCallback = _launchedCallback(txUrl, 'callbackUrl');
 
       // Verify URL structure
       expect(txUrl.scheme, equals('https'));
       expect(txUrl.host, equals('testnet.mynearwallet.com'));
       expect(txUrl.path, equals('/sign'));
-      expect(txUrl.queryParameters['callbackUrl'], equals('myapp://tx/result'));
+      expect(emittedCallback.scheme, equals('myapp'));
+      expect(emittedCallback.host, equals('tx'));
+      expect(emittedCallback.path, equals('/result'));
+      expect(emittedCallback.queryParameters, hasLength(1));
 
       // Step 3: The transactions param is base64 Borsh (what MyNearWallet
       // actually consumes), not JSON.
       expect(
         txUrl.queryParameters['transactions'],
-        equals(base64Encode(serializeTransaction(transaction))),
+        equals(base64Encode(serializeTransaction(transfer))),
       );
 
-      // Step 4: Simulate success callback with transaction hash
-      final successCallback = Uri.parse(
-        'myapp://tx/result?transactionHashes=hash123abc',
-      );
+      // Step 4: Simulate success callback with a canonical transaction hash.
+      final transactionHash = base58Encode(List<int>.filled(32, 1));
+      final successCallback = _withWalletQuery(emittedCallback, {
+        'transactionHashes': transactionHash,
+      });
       final results = adapter.handleTransactionCallback(successCallback);
 
       expect(results.length, equals(1));
-      expect(results.first.transactionHash.value, equals('hash123abc'));
+      expect(results.first.transactionHash.value, equals(transactionHash));
+      expect(
+        () => adapter.handleTransactionCallback(successCallback),
+        _throwsPendingCallback,
+      );
     });
 
-    test('multiple transactions URL flow', () {
-      const publicKey = 'ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj';
-      const blockHash = '244ZQ9cgj3CQ6bWBdytfrJMuMQ1jdXLFGnr4HhvtCTnM';
-      Transaction tx(String receiver, List<Action> actions) => Transaction(
-        signerId: AccountId('alice.testnet'),
-        receiverId: AccountId(receiver),
-        publicKey: PublicKey(publicKey),
-        nonce: BigInt.from(7),
-        blockHash: const CryptoHash(blockHash),
-        actions: actions,
-      );
-
+    test('multiple transactions URL flow', () async {
       final transactions = [
-        tx('bob.testnet', [TransferAction(deposit: NearToken.fromNear(1))]),
-        tx('carol.testnet', [TransferAction(deposit: NearToken.fromNear(2))]),
-        tx('contract.testnet', [
-          FunctionCallAction(
-            methodName: 'do_something',
-            args: {'param': 'value'},
-            deposit: NearToken.zero(),
-          ),
-        ]),
+        transaction(actions: [TransferAction(deposit: NearToken.fromNear(1))]),
+        transaction(
+          receiverId: 'carol.testnet',
+          actions: [TransferAction(deposit: NearToken.fromNear(2))],
+        ),
+        transaction(
+          receiverId: 'contract.testnet',
+          actions: [
+            FunctionCallAction(
+              methodName: 'do_something',
+              args: {'param': 'value'},
+              deposit: NearToken.zero(),
+            ),
+          ],
+        ),
       ];
 
-      final txUrl = adapter.buildTransactionUrl(transactions: transactions);
+      await expectLater(
+        adapter.signAndSendTransactions(transactions: transactions),
+        _throwsPendingCallback,
+      );
+      final txUrl = launchedUrls.single;
 
       // Comma-separated base64 Borsh, one entry per transaction.
       final parts = txUrl.queryParameters['transactions']!.split(',');
@@ -217,21 +264,34 @@ void main() {
         );
       }
 
-      // Simulate callback with multiple hashes
-      final callback = Uri.parse(
-        'myapp://wallet/success?transactionHashes=hash1,hash2,hash3',
+      // Simulate callback with multiple canonical hashes.
+      final hashes = List.generate(
+        3,
+        (index) => base58Encode(List<int>.filled(32, index + 1)),
+      );
+      final callback = _withWalletQuery(
+        _launchedCallback(txUrl, 'callbackUrl'),
+        {'transactionHashes': hashes.join(',')},
       );
       final results = adapter.handleTransactionCallback(callback);
 
       expect(results.length, equals(3));
-      expect(results[0].transactionHash.value, equals('hash1'));
-      expect(results[1].transactionHash.value, equals('hash2'));
-      expect(results[2].transactionHash.value, equals('hash3'));
+      for (var i = 0; i < hashes.length; i++) {
+        expect(results[i].transactionHash.value, equals(hashes[i]));
+      }
     });
 
-    test('transaction error callback handling', () {
-      final errorCallback = Uri.parse(
-        'myapp://wallet/failure?errorCode=rejected&errorMessage=Transaction%20rejected',
+    test('transaction error callback handling', () async {
+      await expectLater(
+        adapter.signAndSendTransaction(
+          transaction: transaction(),
+          callbackUrl: 'myapp://wallet/failure',
+        ),
+        _throwsPendingCallback,
+      );
+      final errorCallback = _withWalletQuery(
+        _launchedCallback(launchedUrls.single, 'callbackUrl'),
+        {'errorCode': 'rejected', 'errorMessage': 'Transaction rejected'},
       );
       final results = adapter.handleTransactionCallback(errorCallback);
 
@@ -319,11 +379,13 @@ void main() {
 
       // Sign in: generate key -> launch -> complete from the callback.
       await adapter.signIn(contractId: AccountId('dapp.near'));
-      final key = launchedUrls.single.queryParameters['public_key']!;
+      final loginUrl = launchedUrls.single;
+      final key = loginUrl.queryParameters['public_key']!;
       await adapter.completeSignIn(
-        Uri.parse(
-          'https://dapp.com/success?account_id=user.near&public_key=$key',
-        ),
+        _withWalletQuery(_launchedCallback(loginUrl, 'success_url'), {
+          'account_id': 'user.near',
+          'public_key': key,
+        }),
       );
 
       // Now signed in

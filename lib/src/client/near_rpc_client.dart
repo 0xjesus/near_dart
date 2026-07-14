@@ -268,6 +268,24 @@ class NearRpcClient {
             return failure;
           }
 
+          final legacyQueryError = _legacyQueryRuntimeError(
+            method,
+            rpcResponse.result,
+          );
+          if (legacyQueryError != null) {
+            final failure = RpcResult<T>.failure(legacyQueryError);
+            _emitRpcEvent(
+              NearLogEventType.rpcRequestFailed,
+              method: method,
+              url: url,
+              attempt: attempt,
+              endpointCount: endpoints.length,
+              statusCode: response.statusCode,
+              stopwatch: stopwatch,
+            );
+            return failure;
+          }
+
           final success = RpcResult<T>.success(parser(rpcResponse.result));
           _emitRpcEvent(
             NearLogEventType.rpcRequestSucceeded,
@@ -350,6 +368,25 @@ class NearRpcClient {
       stopwatch: stopwatch,
     );
     return failure;
+  }
+
+  RpcError? _legacyQueryRuntimeError(String method, dynamic result) {
+    if (method != 'query' || result is! Map<String, dynamic>) return null;
+
+    final error = result['error'];
+    if (error is! String ||
+        error.isEmpty ||
+        result['logs'] is! List<dynamic> ||
+        result['block_height'] is! int ||
+        result['block_hash'] is! String) {
+      return null;
+    }
+
+    return RpcError(
+      kind: RpcErrorKind.runtimeError,
+      message: 'NEAR query failed at runtime.',
+      data: Map<String, dynamic>.unmodifiable(result),
+    );
   }
 
   void _emitRpcEvent(
