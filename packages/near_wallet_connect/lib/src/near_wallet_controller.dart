@@ -156,6 +156,7 @@ class NearWalletController extends ChangeNotifier {
   bool _busy = false;
   NearSdkException? _lastException;
   StreamSubscription<Uri>? _linkSub;
+  bool _disposed = false;
   int _myNearWalletFlowGeneration = 0;
   final Set<Completer<void>> _activeMyNearWalletCallbacks = {};
 
@@ -248,6 +249,7 @@ class NearWalletController extends ChangeNotifier {
   /// Call once at startup. On web it reads `Uri.base`; on mobile it consumes
   /// the initial deep link and listens for subsequent ones.
   Future<void> init() async {
+    if (_disposed) return;
     // near_wallet_connect < 0.3.0 kept keys in plain shared preferences;
     // move any existing session into secure storage once.
     final ks = keyStore;
@@ -263,10 +265,12 @@ class NearWalletController extends ChangeNotifier {
     if (initial != null && _looksLikeCallback(initial)) {
       await _handleCallback(initial);
     }
+    if (_disposed) return;
     _listenForLinks(linkSource.uriLinkStream);
   }
 
   void _listenForLinks(Stream<Uri> links) {
+    if (_disposed) return;
     _linkSub = links.listen((uri) {
       if (_looksLikeCallback(uri)) _handleCallback(uri);
     });
@@ -556,6 +560,7 @@ class NearWalletController extends ChangeNotifier {
   }
 
   Future<void> _handleCallback(Uri uri) async {
+    if (_disposed) return;
     final operation = Completer<void>();
     _activeMyNearWalletCallbacks.add(operation);
     final generation = _myNearWalletFlowGeneration;
@@ -574,10 +579,10 @@ class NearWalletController extends ChangeNotifier {
       );
     } catch (error) {
       await adapter.cancelPendingSignIn();
-      if (generation != _myNearWalletFlowGeneration) return;
       if (sessionWriteStarted) {
         await _restorePersistedSession(previousAccount, previousOption);
       }
+      if (generation != _myNearWalletFlowGeneration) return;
       _setException(_normalizeControllerError(error), busy: false);
     } finally {
       _activeMyNearWalletCallbacks.remove(operation);
@@ -697,7 +702,7 @@ class NearWalletController extends ChangeNotifier {
     _walletOption = null;
     _busy = false;
     _lastException = null;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
     emitNearLog(
       logger,
       NearLogEvent(
@@ -892,6 +897,7 @@ class NearWalletController extends ChangeNotifier {
   }
 
   void _logConnected(NearWalletOption wallet) {
+    if (_disposed) return;
     emitNearLog(
       logger,
       NearLogEvent(
@@ -904,11 +910,13 @@ class NearWalletController extends ChangeNotifier {
   }
 
   void _setException(NearSdkException exception, {bool? busy}) {
+    if (_disposed) return;
     _lastException = exception;
     _set(busy: busy);
   }
 
   void _set({bool? busy, bool clearException = false}) {
+    if (_disposed) return;
     if (busy != null) _busy = busy;
     if (clearException) _lastException = null;
     notifyListeners();
@@ -916,7 +924,11 @@ class NearWalletController extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _myNearWalletFlowGeneration++;
     _linkSub?.cancel();
+    _linkSub = null;
     _myNearWalletAdapter?.dispose();
     super.dispose();
   }
