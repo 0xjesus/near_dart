@@ -27,6 +27,8 @@ export 'package:near_dart/near_dart.dart'
         NearLogEventType,
         Nep413Payload,
         Nep413SignedMessage,
+        MyNearWalletAdapter,
+        MyNearWalletConfig,
         IntearWalletAdapter,
         IntearWalletConfig,
         HotWalletAdapter,

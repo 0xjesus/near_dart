@@ -197,6 +197,105 @@ void main() {
         expect(error.message, isNot(contains(secret)));
       },
     );
+
+    test('does not infer a missing key from access-key RPC wording', () async {
+      const sentinel = 'rpc-timeout-sentinel';
+      final client = _FakeNearRpcClient()
+        ..accessKeyResult = RpcResult.failure(
+          const RpcError(
+            kind: RpcErrorKind.rpcError,
+            message: 'Access key query timed out: $sentinel',
+          ),
+        );
+
+      final error = await _expectNearError(
+        () => NearWalletSecurity(client).verifyAccessKey(
+          account: account,
+          contractId: contractId,
+          methodNames: const [],
+          requireFunctionCallScope: false,
+        ),
+        NearErrorCode.rpcTimeout,
+      );
+
+      expect(error.retryable, isTrue);
+      expect(error.message, isNot(contains(sentinel)));
+    });
+
+    test('prioritizes rate limiting over runtime access-key wording', () async {
+      const sentinel = 'rate-limit-sentinel';
+      final client = _FakeNearRpcClient()
+        ..accessKeyResult = RpcResult.failure(
+          const RpcError(
+            kind: RpcErrorKind.runtimeError,
+            message: 'Too many requests for access key query: $sentinel',
+          ),
+        );
+
+      final error = await _expectNearError(
+        () => NearWalletSecurity(client).verifyAccessKey(
+          account: account,
+          contractId: contractId,
+          methodNames: const [],
+          requireFunctionCallScope: false,
+        ),
+        NearErrorCode.rateLimited,
+      );
+
+      expect(error.retryable, isTrue);
+      expect(error.message, isNot(contains(sentinel)));
+    });
+
+    test(
+      'prioritizes server failure over unknown access-key wording',
+      () async {
+        const sentinel = 'server-failure-sentinel';
+        final client = _FakeNearRpcClient()
+          ..accessKeyResult = RpcResult.failure(
+            const RpcError(
+              kind: RpcErrorKind.unknown,
+              message:
+                  'Internal server failure during access key query: $sentinel',
+            ),
+          );
+
+        final error = await _expectNearError(
+          () => NearWalletSecurity(client).verifyAccessKey(
+            account: account,
+            contractId: contractId,
+            methodNames: const [],
+            requireFunctionCallScope: false,
+          ),
+          NearErrorCode.rpcUnavailable,
+        );
+
+        expect(error.retryable, isTrue);
+        expect(error.message, isNot(contains(sentinel)));
+      },
+    );
+
+    test('accepts a canonical structured missing-key marker', () async {
+      final client = _FakeNearRpcClient()
+        ..accessKeyResult = RpcResult.failure(
+          const RpcError(
+            kind: RpcErrorKind.rpcError,
+            message: 'Server error',
+            data: {
+              'cause': {'name': 'UNKNOWN_ACCESS_KEY'},
+            },
+          ),
+        );
+
+      await _expectNearError(
+        () => NearWalletSecurity(client).verifyAccessKey(
+          account: account,
+          contractId: contractId,
+          methodNames: const [],
+          requireFunctionCallScope: false,
+        ),
+        NearErrorCode.accessKeyNotFound,
+      );
+    });
   });
 
   group('confirmTransactions', () {
@@ -368,7 +467,7 @@ TransactionResponse _transactionResponse(Object status) =>
       'status': status,
       'transaction': {
         'signer_id': 'alice.testnet',
-        'public_key': 'ed25519:11111111111111111111111111111111',
+        'public_key': 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp',
         'nonce': 1,
         'receiver_id': 'app.testnet',
         'hash': 'hash',

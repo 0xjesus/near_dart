@@ -128,21 +128,18 @@ bool _isMissingAccessKey(RpcError error) {
       error.kind != RpcErrorKind.unknown) {
     return false;
   }
-  if (error.nearErrorCode == NearErrorCode.accessKeyNotFound) return true;
-  final normalized = '${error.message} ${error.data}'.toLowerCase().replaceAll(
-    RegExp(r'[^a-z0-9]'),
-    '',
-  );
+  final text = _rpcErrorText(error);
+  if (_hasTimeoutSignal(text) || _hasRateLimitSignal(text)) return false;
+  final normalized = text.replaceAll(RegExp(r'[^a-z0-9]'), '');
   return normalized.contains('unknownaccesskey') ||
-      normalized.contains('accesskeynotfound') ||
-      normalized.contains('accesskeydoesnotexist');
+      normalized.contains('accesskeynotfound');
 }
 
 NearSdkException _safeRpcException(
   RpcError error, {
   required String operation,
 }) {
-  final code = error.nearErrorCode;
+  final code = _classifyRpcError(error);
   final retryable = switch (code) {
     NearErrorCode.rpcUnavailable ||
     NearErrorCode.rpcTimeout ||
@@ -163,6 +160,58 @@ NearSdkException _safeRpcException(
   };
   return NearSdkException(code: code, message: message, retryable: retryable);
 }
+
+NearErrorCode _classifyRpcError(RpcError error) {
+  switch (error.kind) {
+    case RpcErrorKind.timeout:
+      return NearErrorCode.rpcTimeout;
+    case RpcErrorKind.networkError:
+      return NearErrorCode.rpcUnavailable;
+    case RpcErrorKind.httpError when error.code == 429:
+      return NearErrorCode.rateLimited;
+    case RpcErrorKind.httpError:
+      return NearErrorCode.rpcUnavailable;
+    case RpcErrorKind.parseError:
+      return NearErrorCode.invalidResponse;
+    case RpcErrorKind.cancelled:
+      return NearErrorCode.cancelled;
+    case RpcErrorKind.rpcError ||
+        RpcErrorKind.runtimeError ||
+        RpcErrorKind.unknown:
+      break;
+  }
+
+  final text = _rpcErrorText(error);
+  if (_hasTimeoutSignal(text)) return NearErrorCode.rpcTimeout;
+  if (_hasRateLimitSignal(text)) return NearErrorCode.rateLimited;
+  if (_hasServerFailureSignal(text, error.code)) {
+    return NearErrorCode.rpcUnavailable;
+  }
+
+  final derived = error.nearErrorCode;
+  return derived == NearErrorCode.accessKeyNotFound
+      ? NearErrorCode.unknown
+      : derived;
+}
+
+String _rpcErrorText(RpcError error) =>
+    '${error.message} ${error.data}'.toLowerCase();
+
+bool _hasTimeoutSignal(String text) =>
+    text.contains('timed out') || text.contains('timeout');
+
+bool _hasRateLimitSignal(String text) =>
+    text.contains('rate limit') ||
+    text.contains('too many request') ||
+    RegExp(r'(^|\D)429(\D|$)').hasMatch(text);
+
+bool _hasServerFailureSignal(String text, int? code) =>
+    (code != null && code >= 500 && code <= 599) ||
+    text.contains('server error') ||
+    text.contains('server failure') ||
+    text.contains('internal server') ||
+    text.contains('service unavailable') ||
+    text.contains('temporarily unavailable');
 
 List<String> _extractTransactionHashes(List<dynamic> outcomes) {
   final hashes = LinkedHashSet<String>();

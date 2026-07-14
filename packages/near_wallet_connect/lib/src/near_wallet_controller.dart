@@ -11,6 +11,17 @@ import 'shared_prefs_key_store.dart';
 import 'wallet_security.dart';
 import 'wallet_option.dart';
 
+/// Creates a MyNearWallet adapter with the controller's logger.
+typedef MyNearWalletAdapterBuilder =
+    MyNearWalletAdapter Function(NearLogger? logger);
+
+/// Creates an Intear adapter with the controller's logger.
+typedef IntearWalletAdapterBuilder =
+    IntearWalletAdapter Function(NearLogger? logger);
+
+/// Creates a HOT adapter with the controller's logger.
+typedef HotWalletAdapterBuilder = HotWalletAdapter Function(NearLogger? logger);
+
 /// One controller for every supported NEAR wallet.
 ///
 /// ```dart
@@ -50,13 +61,27 @@ class NearWalletController extends ChangeNotifier {
     this.securityPolicy = const NearWalletSecurityPolicy(),
     NearWalletSecurity? security,
     this.logger,
+    @visibleForTesting MyNearWalletAdapterBuilder? myNearWalletAdapterBuilder,
+    @visibleForTesting IntearWalletAdapterBuilder? intearWalletAdapterBuilder,
+    @visibleForTesting HotWalletAdapterBuilder? hotWalletAdapterBuilder,
+    @visibleForTesting Future<Uri?> Function()? initialLinkProvider,
+    @visibleForTesting Stream<Uri>? linkStream,
   }) : keyStore =
            keyStore ?? (kIsWeb ? SharedPrefsKeyStore() : SecureKeyStore()),
        client =
            client ??
            (network == MyNearWalletNetwork.mainnet
                ? NearRpcClient.mainnet(logger: logger)
-               : NearRpcClient.testnet(logger: logger)) {
+               : NearRpcClient.testnet(logger: logger)),
+       _myNearWalletAdapterBuilder = myNearWalletAdapterBuilder,
+       _intearWalletAdapterBuilder = intearWalletAdapterBuilder,
+       _hotWalletAdapterBuilder = hotWalletAdapterBuilder,
+       _initialLinkProvider = initialLinkProvider,
+       _linkStream = linkStream,
+       assert(
+         (initialLinkProvider == null) == (linkStream == null),
+         'initialLinkProvider and linkStream must be provided together',
+       ) {
     this.security = security ?? NearWalletSecurity(this.client);
   }
 
@@ -94,6 +119,12 @@ class NearWalletController extends ChangeNotifier {
 
   /// Receives safe structured diagnostics from wallet and RPC operations.
   final NearLogger? logger;
+
+  final MyNearWalletAdapterBuilder? _myNearWalletAdapterBuilder;
+  final IntearWalletAdapterBuilder? _intearWalletAdapterBuilder;
+  final HotWalletAdapterBuilder? _hotWalletAdapterBuilder;
+  final Future<Uri?> Function()? _initialLinkProvider;
+  final Stream<Uri>? _linkStream;
 
   static const _optionPrefsKey = 'near_wallet_connect_option';
   static const _hotAccountPrefsKey = 'near_wallet_connect_hot_account';
@@ -140,6 +171,8 @@ class NearWalletController extends ChangeNotifier {
   // ── adapters ─────────────────────────────────────────────────────────────
 
   MyNearWalletAdapter _mnwAdapter() {
+    final builder = _myNearWalletAdapterBuilder;
+    if (builder != null) return builder(logger);
     final base = kIsWeb
         ? Uri.base.replace(query: '').removeFragment().toString()
         : '$callbackScheme://callback';
@@ -156,23 +189,31 @@ class NearWalletController extends ChangeNotifier {
     );
   }
 
-  IntearWalletAdapter _intearAdapter() => IntearWalletAdapter(
-    config: IntearWalletConfig(
-      networkId: _networkId,
-      origin: appOrigin ?? '$callbackScheme://app',
-      contractId: contractId,
-      methodNames: methodNames.isEmpty ? null : methodNames,
-    ),
-    keyStore: keyStore,
-    launchUrl: _launch,
-    logger: logger,
-  );
+  IntearWalletAdapter _intearAdapter() {
+    final builder = _intearWalletAdapterBuilder;
+    if (builder != null) return builder(logger);
+    return IntearWalletAdapter(
+      config: IntearWalletConfig(
+        networkId: _networkId,
+        origin: appOrigin ?? '$callbackScheme://app',
+        contractId: contractId,
+        methodNames: methodNames.isEmpty ? null : methodNames,
+      ),
+      keyStore: keyStore,
+      launchUrl: _launch,
+      logger: logger,
+    );
+  }
 
-  HotWalletAdapter _hotAdapter() => HotWalletAdapter(
-    config: HotWalletConfig(origin: appOrigin ?? '$callbackScheme://app'),
-    launchUrl: _launch,
-    logger: logger,
-  );
+  HotWalletAdapter _hotAdapter() {
+    final builder = _hotWalletAdapterBuilder;
+    if (builder != null) return builder(logger);
+    return HotWalletAdapter(
+      config: HotWalletConfig(origin: appOrigin ?? '$callbackScheme://app'),
+      launchUrl: _launch,
+      logger: logger,
+    );
+  }
 
   // ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -191,41 +232,122 @@ class NearWalletController extends ChangeNotifier {
       if (_looksLikeCallback(Uri.base)) await _handleCallback(Uri.base);
       return;
     }
+    final initialLinkProvider = _initialLinkProvider;
+    if (initialLinkProvider != null) {
+      final initial = await initialLinkProvider();
+      if (initial != null && _looksLikeCallback(initial)) {
+        await _handleCallback(initial);
+      }
+      _listenForLinks(_linkStream!);
+      return;
+    }
     _appLinks = AppLinks();
     final initial = await _appLinks!.getInitialLink();
     if (initial != null && _looksLikeCallback(initial)) {
       await _handleCallback(initial);
     }
-    _linkSub = _appLinks!.uriLinkStream.listen((uri) {
+    _listenForLinks(_appLinks!.uriLinkStream);
+  }
+
+  void _listenForLinks(Stream<Uri> links) {
+    _linkSub = links.listen((uri) {
       if (_looksLikeCallback(uri)) _handleCallback(uri);
     });
   }
 
   Future<void> _restore() async {
     final prefs = await SharedPreferences.getInstance();
-    _walletOption = NearWalletOption.values
+    final restoredOption = NearWalletOption.values
         .asNameMap()[prefs.getString(_optionPrefsKey)];
+    _account = null;
+    _walletOption = null;
 
-    if (_walletOption == NearWalletOption.hot) {
-      final accountId = prefs.getString(_hotAccountPrefsKey);
-      final publicKey = prefs.getString(_hotPublicKeyPrefsKey);
-      if (accountId != null && publicKey != null) {
-        _account = WalletAccount(
-          accountId: AccountId(accountId),
-          publicKey: PublicKey(publicKey),
-        );
-        notifyListeners();
-      }
+    if (restoredOption == NearWalletOption.hot) {
+      await _restoreHot(prefs);
       return;
     }
 
     // MyNearWallet and Intear both persist a key in the key store.
     final accounts = await _mnwAdapter().getAccounts();
-    if (accounts.isNotEmpty) {
-      _account = accounts.first;
-      _walletOption ??= NearWalletOption.myNearWallet;
-      notifyListeners();
+    if (accounts.isEmpty) return;
+
+    final account = accounts.first;
+    final option = restoredOption ?? NearWalletOption.myNearWallet;
+    if (!await _verifyRestoredAccount(
+      account,
+      requireFunctionCallScope: true,
+      removeStoredKeyOnDefiniteFailure: true,
+    )) {
+      return;
     }
+    _publishRestoredAccount(account, option);
+  }
+
+  Future<void> _restoreHot(SharedPreferences prefs) async {
+    final accountId = prefs.getString(_hotAccountPrefsKey);
+    final publicKey = prefs.getString(_hotPublicKeyPrefsKey);
+    if (accountId == null || publicKey == null) {
+      await _clearPersistedSession();
+      return;
+    }
+
+    final WalletAccount account;
+    try {
+      account = WalletAccount(
+        accountId: AccountId(accountId),
+        publicKey: PublicKey(publicKey),
+      );
+    } catch (_) {
+      await _clearPersistedSession();
+      return;
+    }
+
+    if (!await _verifyRestoredAccount(
+      account,
+      requireFunctionCallScope: false,
+      removeStoredKeyOnDefiniteFailure: false,
+    )) {
+      return;
+    }
+    _publishRestoredAccount(account, NearWalletOption.hot);
+  }
+
+  Future<bool> _verifyRestoredAccount(
+    WalletAccount account, {
+    required bool requireFunctionCallScope,
+    required bool removeStoredKeyOnDefiniteFailure,
+  }) async {
+    if (!securityPolicy.verifyAccessKeyOnConnect) return true;
+    try {
+      await security.verifyAccessKey(
+        account: account,
+        contractId: contractId,
+        methodNames: methodNames,
+        requireFunctionCallScope: requireFunctionCallScope,
+      );
+      return true;
+    } catch (error) {
+      final exception = _normalizeControllerError(error);
+      final definiteFailure =
+          exception.code == NearErrorCode.accessKeyNotFound ||
+          exception.code == NearErrorCode.accessKeyMismatch;
+      if (definiteFailure) {
+        if (removeStoredKeyOnDefiniteFailure) {
+          await keyStore.removeKey(account.accountId);
+        }
+        await _clearPersistedSession();
+      }
+      _account = null;
+      _walletOption = null;
+      _setException(exception, busy: false);
+      return false;
+    }
+  }
+
+  void _publishRestoredAccount(WalletAccount account, NearWalletOption option) {
+    _account = account;
+    _walletOption = option;
+    _set(clearException: true);
   }
 
   static bool _looksLikeCallback(Uri uri) =>
