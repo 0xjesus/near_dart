@@ -53,6 +53,7 @@ Reference app evidence:
 
 - [First transaction in 5 minutes](https://github.com/0xjesus/near_dart/blob/main/docs/5-minute-guide.md)
 - [Wallet recipes](https://github.com/0xjesus/near_dart/blob/main/docs/wallet-recipes.md)
+- [Flutter architecture recipes](https://github.com/0xjesus/near_dart/blob/main/docs/flutter-architectures.md)
 - [NEAR Intents](https://github.com/0xjesus/near_dart/blob/main/docs/intents.md)
 - [NEAR AI](https://github.com/0xjesus/near_dart/blob/main/docs/near-ai.md)
 - [Security model](https://github.com/0xjesus/near_dart/blob/main/docs/security.md)

@@ -78,6 +78,10 @@ await wallet.sendTransactions([
 
 That's it. See [`example/`](example/) for a complete minimal app.
 
+For lifecycle-safe ChangeNotifier, Provider, Riverpod, and Bloc/Cubit setups,
+see the
+[Flutter architecture recipes](https://github.com/0xjesus/near_dart/blob/main/docs/flutter-architectures.md).
+
 ## Customize the UI
 
 Use the default button for fast integration:

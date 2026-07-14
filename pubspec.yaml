@@ -11,6 +11,10 @@ topics:
   - crypto
   - wallet
 
+screenshots:
+  - description: NEAR Intents quote and lifecycle in the reference app
+    path: screenshots/intents-quote.png
+
 environment:
   sdk: ^3.9.0
 

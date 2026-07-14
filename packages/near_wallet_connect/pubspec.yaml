@@ -12,6 +12,10 @@ topics:
   - web3
   - blockchain
 
+screenshots:
+  - description: Multi-wallet connection in Flutter
+    path: screenshots/wallet-connect.png
+
 environment:
   sdk: ^3.9.0
   flutter: ">=3.10.0"
