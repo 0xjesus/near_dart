@@ -561,6 +561,45 @@ class NearRpcClient {
     }, CallFunctionResponse.fromJson);
   }
 
+  /// Calls a view function and decodes its JSON result as [T].
+  ///
+  /// The query defaults to final block finality. If [decode] rejects the
+  /// returned JSON shape, this method returns an [RpcErrorKind.parseError]
+  /// failure instead of throwing from the decoder.
+  ///
+  /// ```dart
+  /// final result = await client.viewFunction<int>(
+  ///   contractId: AccountId('counter.near'),
+  ///   methodName: 'get_count',
+  ///   decode: (json) => (json as Map<String, dynamic>)['count'] as int,
+  /// );
+  /// ```
+  Future<RpcResult<T>> viewFunction<T>({
+    required AccountId contractId,
+    required String methodName,
+    Map<String, dynamic>? args,
+    required T Function(Object? json) decode,
+    BlockReference? blockReference,
+  }) async {
+    final response = await callFunction(
+      accountId: contractId,
+      methodName: methodName,
+      args: args,
+      blockReference:
+          blockReference ?? BlockReference.finality(Finality.final_),
+    );
+    if (response case RpcFailure<CallFunctionResponse>(:final error)) {
+      return RpcResult<T>.failure(error);
+    }
+    try {
+      return RpcResult<T>.success(decode(response.getOrThrow().resultAsJson()));
+    } catch (error) {
+      return RpcResult<T>.failure(
+        RpcError.parse('Failed to decode view function result', error),
+      );
+    }
+  }
+
   /// Returns information about validators for a given epoch.
   ///
   /// Pass null for the latest epoch, or specify a block height/hash.

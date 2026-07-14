@@ -1,123 +1,149 @@
 # First NEAR Transaction In 5 Minutes
 
-This guide is the shortest happy path for a Flutter or Dart developer who wants
-to prove the SDK works before reading the rest of the docs.
+This is a copy-paste path from a funded testnet account to a view call and a
+real transaction submitted with `near_dart`.
 
-## 1. Install
+## 1. Create And Fund A Testnet Account
 
-For a pure Dart app, CLI, server, or Flutter app with local signing:
+Install the current NEAR CLI and ask the testnet faucet to create an account:
 
-```yaml
-dependencies:
-  near_dart: ^0.5.0
+```bash
+npm install -g near-cli-rs@latest
+near create-account <your-account.testnet> --useFaucet --networkId testnet
 ```
 
-For a Flutter app that needs wallet UI:
+Replace `<your-account.testnet>` with a unique name ending in `.testnet`.
+The CLI stores the generated key in its keychain. See the official
+[Create an Account](https://docs.near.org/getting-started/create-account)
+and [NEAR CLI](https://docs.near.org/tools/cli) guides if the faucet is rate
+limited or the platform keychain needs a different setup.
 
-```yaml
-dependencies:
-  near_wallet_connect: ^0.4.0
+Export only this disposable testnet account when the CLI prompts you:
+
+```bash
+near account export-account <your-account.testnet>
 ```
 
-`near_wallet_connect` re-exports the most common `near_dart` types.
+Never use a mainnet key in this guide. Do not paste a seed phrase or private
+key into source files, issue comments, logs, screenshots, or AI chats.
 
-## 2. Query Chain State
+## 2. Create The Dart Project
+
+```bash
+dart create -t console-simple first_near_tx
+cd first_near_tx
+dart pub add near_dart
+```
+
+Set the account ID and enter the exported testnet private key without placing
+the key in shell history:
+
+```bash
+export NEAR_ACCOUNT_ID=<your-account.testnet>
+read -s NEAR_PRIVATE_KEY
+export NEAR_PRIVATE_KEY
+```
+
+## 3. Query, View, Sign, And Open The Explorer
+
+Replace `bin/first_near_tx.dart` with:
 
 ```dart
+import 'dart:io';
+
 import 'package:near_dart/near_dart.dart';
 
 Future<void> main() async {
+  final accountIdValue = Platform.environment['NEAR_ACCOUNT_ID'];
+  final privateKeyValue = Platform.environment['NEAR_PRIVATE_KEY'];
+  if (accountIdValue == null || privateKeyValue == null) {
+    throw StateError('Set NEAR_ACCOUNT_ID and NEAR_PRIVATE_KEY first');
+  }
+
   final client = NearRpcClient.testnet();
+  try {
+    final accountId = AccountId(accountIdValue);
 
-  final status = await client.status();
-  print(status.getOrThrow().chainId);
+    final state = await client.viewAccount(
+      accountId: accountId,
+      blockReference: BlockReference.finality(Finality.final_),
+    );
+    print('Balance: ${state.getOrThrow().amount.toNearString()} NEAR');
 
-  final account = await client.viewAccount(
-    accountId: AccountId('nearcoffee-jar.testnet'),
-    blockReference: BlockReference.finality(Finality.final_),
-  );
-  print(account.getOrThrow().amount.toNearString(fractionDigits: 2));
+    final metadata = await client.viewFunction<Map<String, dynamic>>(
+      contractId: AccountId('wrap.testnet'),
+      methodName: 'ft_metadata',
+      decode: (json) => (json as Map).cast<String, dynamic>(),
+    );
+    print('View call: ${metadata.getOrThrow()['symbol']}');
 
-  client.close();
+    final signer = Account(
+      accountId: accountId,
+      keyPair: await KeyPairEd25519.fromString(privateKeyValue),
+      client: client,
+    );
+    final sent = await signer.transfer(
+      receiverId: AccountId('testnet'),
+      amount: NearToken.oneYocto(),
+      waitUntil: TxExecutionStatus.final_,
+    );
+
+    final hash = sent.getOrThrow().transaction.hash;
+    print('Explorer: https://testnet.nearblocks.io/txns/$hash');
+  } finally {
+    client.close();
+  }
 }
 ```
 
-## 3. Call A View Method
+Run it:
 
-```dart
-final supporters = await client.callFunction(
-  accountId: AccountId('nearcoffee-jar.testnet'),
-  methodName: 'total_tips',
-  args: const {},
-  blockReference: BlockReference.finality(Finality.final_),
-);
-
-print(supporters.getOrThrow().resultAsJson());
+```bash
+dart run
+unset NEAR_PRIVATE_KEY
 ```
 
-## 4. Use Typed NEP Helpers
+Expected output includes the funded balance, `wNEAR`, and a testnet explorer
+URL. Open the URL to inspect the finalized one-yocto transaction.
+
+## 4. Use Typed Token Helpers
+
+The same client exposes NEP-141, NEP-145, and NEP-171 helpers:
 
 ```dart
 final wnear = AccountId('wrap.testnet');
-
 final metadata = await client.ftMetadata(tokenId: wnear);
-print(metadata.getOrThrow().symbol);
-
 final balance = await client.ftBalanceOf(
   tokenId: wnear,
-  accountId: AccountId('alice.testnet'),
+  accountId: AccountId('your-account.testnet'),
 );
-print(balance.getOrThrow());
+print('${metadata.getOrThrow().symbol}: ${balance.getOrThrow()}');
 ```
 
-## 5. Sign A Transaction Locally
+Use `NearGas.teraGas(30)` for an explicit 30 TGas limit and
+`NearToken.oneYocto()` for methods that require proof of full-access-key
+intent.
 
-Only do this with a testnet key you control. Do not paste seed phrases into
-examples, issue comments, or AI chats.
+## 5. Flutter Wallet UI
 
-```dart
-final account = Account(
-  accountId: AccountId('alice.testnet'),
-  keyPair: await KeyPairEd25519.fromString('ed25519:<testnet-secret-key>'),
-  client: client,
-);
-
-final result = await account.transfer(
-  receiverId: AccountId('bob.testnet'),
-  amount: NearToken.fromYocto('1'),
-  waitUntil: TxExecutionStatus.final_,
-);
-
-final tx = result.getOrThrow();
-print('https://testnet.nearblocks.io/txns/${tx.transaction.hash}');
-```
-
-## 6. Flutter Wallet UI
+Add `near_wallet_connect` when the user, rather than the application, should
+approve wallet actions:
 
 ```dart
 final controller = NearWalletController(
   network: MyNearWalletNetwork.testnet,
-  contractId: AccountId('nearcoffee-jar.testnet'),
-  methodNames: const ['tip'],
+  contractId: AccountId('your-contract.testnet'),
+  methodNames: const ['your_method'],
   callbackScheme: 'myapp',
 );
 
 await controller.init();
 
-// In your widget tree:
+// In the widget tree:
 NearConnectButton(controller: controller);
 ```
 
-After the user connects, a function-call key is available for gas-only calls:
-
-```dart
-final signer = await controller.signer();
-await signer?.callFunction(
-  contractId: AccountId('nearcoffee-jar.testnet'),
-  methodName: 'tip',
-  args: {'message': 'hello'},
-);
-```
-
-Function-call keys cannot attach deposits. For payments, ask the wallet to sign
-the transaction.
+Complete Android, iOS, and web callback setup in
+[Wallet Recipes](wallet-recipes.md) before testing a redirect wallet.
+Function-call keys cannot attach deposits; use the wallet transaction flow for
+payments.

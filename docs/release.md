@@ -56,8 +56,11 @@ flutter build apk --debug
 ## CI Workflow Coverage
 
 The required CI workflow builds the example on Windows Server 2022, Linux,
-and macOS, and runs the SDK's Chrome platform tests. The Chrome job also
-compiles `tool/web_compile_smoke.dart` with both `dart2js` and `dart2wasm`.
+macOS, Android, iOS, and web. Chrome runs the SDK platform/signing suites with
+both dart2js and Dart2Wasm, plus the Flutter wallet redirect/session-restore
+test with JavaScript and Wasm. The web example is also built in both modes.
+The Chrome job separately compiles `tool/web_compile_smoke.dart` with
+`dart2js` and `dart2wasm`.
 
 The manual **Release Check** workflow runs on relevant package and changelog
 pull requests. It performs analysis, tests, and `dart pub publish --dry-run`

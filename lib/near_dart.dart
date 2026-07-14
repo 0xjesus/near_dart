@@ -53,6 +53,7 @@ export 'src/types/block_reference.dart';
 export 'src/types/json_rpc.dart';
 export 'src/types/rpc_result.dart';
 export 'src/types/network.dart';
+export 'src/types/near_gas.dart';
 
 // Encoding
 export 'src/encoding/base58.dart';

@@ -28,6 +28,57 @@ void main() {
   }
 
   group('NEP view helpers', () {
+    test('viewFunction decodes typed JSON at final block finality', () async {
+      late Map<String, dynamic> rpc;
+      final client = NearRpcClient(
+        rpcUrl: 'https://rpc.example.com',
+        httpClient: MockClient((request) async {
+          rpc = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode(callFunctionResult({'count': 7})),
+            200,
+          );
+        }),
+      );
+
+      final result = await client.viewFunction<int>(
+        contractId: AccountId('counter.near'),
+        methodName: 'get_count',
+        args: const {'owner_id': 'alice.near'},
+        decode: (json) => (json as Map<String, dynamic>)['count'] as int,
+      );
+
+      expect(result.getOrThrow(), 7);
+      final params = rpc['params'] as Map<String, dynamic>;
+      expect(params['account_id'], 'counter.near');
+      expect(params['method_name'], 'get_count');
+      expect(params['finality'], 'final');
+    });
+
+    test(
+      'viewFunction returns a parse failure when typed decoding fails',
+      () async {
+        final client = NearRpcClient(
+          rpcUrl: 'https://rpc.example.com',
+          httpClient: MockClient((_) async {
+            return http.Response(
+              jsonEncode(callFunctionResult('invalid')),
+              200,
+            );
+          }),
+        );
+
+        final result = await client.viewFunction<int>(
+          contractId: AccountId('counter.near'),
+          methodName: 'get_count',
+          decode: (json) => (json as Map<String, dynamic>)['count'] as int,
+        );
+
+        expect(result, isA<RpcFailure<int>>());
+        expect((result as RpcFailure<int>).error.kind, RpcErrorKind.parseError);
+      },
+    );
+
     test('ftBalanceOf calls ft_balance_of and parses a BigInt', () async {
       late Map<String, dynamic> rpc;
       final client = NearRpcClient(

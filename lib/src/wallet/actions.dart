@@ -73,10 +73,7 @@ class FunctionCallAction extends Action {
     this.args,
     BigInt? gas,
     required this.deposit,
-  }) : gas = gas ?? _defaultGas;
-
-  /// Default gas: 30 TGas (30 * 10^12).
-  static final BigInt _defaultGas = BigInt.from(30) * BigInt.from(10).pow(12);
+  }) : gas = gas ?? NearGas.defaultFunctionCall;
 
   /// The name of the method to call.
   final String methodName;

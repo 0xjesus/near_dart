@@ -19,6 +19,17 @@ List<String> jobCommands(String workflowPath, String jobName) {
       .toList();
 }
 
+List<String> jobActions(String workflowPath, String jobName) {
+  final jobs = workflow(workflowPath)['jobs'] as YamlMap;
+  final job = jobs[jobName] as YamlMap;
+  final steps = job['steps'] as YamlList;
+  return steps
+      .whereType<YamlMap>()
+      .map((step) => step['uses'])
+      .whereType<String>()
+      .toList();
+}
+
 void expectWalletCheckoutOverride(List<String> commands) {
   final overrideIndex = commands.indexWhere(
     (command) =>
@@ -103,6 +114,65 @@ void main() {
     expect(
       commands.where((command) => command.contains('pub publish')),
       isEmpty,
+    );
+  });
+
+  test('Chrome CI covers signing and wallet redirect restoration', () {
+    final rootCommands = jobCommands(
+      '.github/workflows/test.yml',
+      'platform-chrome',
+    );
+    expect(
+      rootCommands,
+      contains(
+        'dart test --platform chrome test/platform/web_test.dart '
+        'test/platform/web_signing_test.dart --reporter=expanded',
+      ),
+    );
+    expect(
+      rootCommands,
+      contains(
+        'dart test --platform chrome --compiler dart2wasm '
+        'test/platform/web_test.dart test/platform/web_signing_test.dart '
+        '--reporter=expanded',
+      ),
+    );
+
+    final walletCommands = jobCommands(
+      '.github/workflows/test.yml',
+      'wallet-connect',
+    );
+    expect(
+      walletCommands,
+      contains('flutter test --platform chrome test/web_wallet_flow_test.dart'),
+    );
+    expect(
+      walletCommands,
+      contains(
+        'flutter test --platform chrome --wasm '
+        'test/web_wallet_flow_test.dart',
+      ),
+    );
+
+    final webBuildCommands = jobCommands(
+      '.github/workflows/test.yml',
+      'example-web',
+    );
+    expect(
+      webBuildCommands,
+      contains('flutter build web --wasm --no-tree-shake-icons'),
+    );
+
+    const pinnedChromeAction =
+        'browser-actions/setup-chrome@'
+        '2e1d749697dd1612b833dba4a722266286fbefcd';
+    expect(
+      jobActions('.github/workflows/test.yml', 'platform-chrome'),
+      contains(pinnedChromeAction),
+    );
+    expect(
+      jobActions('.github/workflows/test.yml', 'wallet-connect'),
+      contains(pinnedChromeAction),
     );
   });
 

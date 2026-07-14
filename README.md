@@ -349,6 +349,24 @@ final zero = NearToken.zero();
 print(amount.toNear());  // 10.0
 ```
 
+### NearGas
+
+```dart
+final defaultCallGas = NearGas.defaultFunctionCall; // 30 TGas
+final customGas = NearGas.teraGas(100);              // exact BigInt
+```
+
+### Typed View Calls
+
+```dart
+final metadata = await client.viewFunction<Map<String, dynamic>>(
+  contractId: AccountId('wrap.near'),
+  methodName: 'ft_metadata',
+  decode: (json) => (json as Map).cast<String, dynamic>(),
+);
+print(metadata.getOrThrow()['symbol']);
+```
+
 ### PublicKey
 
 ```dart

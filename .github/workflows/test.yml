@@ -166,13 +166,17 @@ jobs:
         with:
           sdk: stable
 
-      - uses: browser-actions/setup-chrome@latest
+      - uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
 
       - name: Install dependencies
         run: dart pub get --no-example
 
       - name: Run Chrome platform tests
-        run: dart test --platform chrome test/platform/web_test.dart --reporter=expanded
+        run: dart test --platform chrome test/platform/web_test.dart test/platform/web_signing_test.dart --reporter=expanded
+        timeout-minutes: 5
+
+      - name: Run Chrome platform tests (dart2wasm)
+        run: dart test --platform chrome --compiler dart2wasm test/platform/web_test.dart test/platform/web_signing_test.dart --reporter=expanded
         timeout-minutes: 5
 
       - name: Compile SDK smoke test with dart2js
@@ -195,7 +199,7 @@ jobs:
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
-      - uses: browser-actions/setup-chrome@latest
+      - uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
       - name: Install dependencies
         run: dart pub get
       - name: Regenerate from the committed spec
@@ -219,6 +223,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
       - name: Resolve near_dart from this checkout
         run: |
           printf '%s\n' \
@@ -232,6 +237,12 @@ jobs:
         run: flutter analyze lib test
       - name: Test
         run: flutter test
+      - name: Test web redirect and session restoration
+        run: flutter test --platform chrome test/web_wallet_flow_test.dart
+        timeout-minutes: 5
+      - name: Test web redirect and session restoration (Wasm)
+        run: flutter test --platform chrome --wasm test/web_wallet_flow_test.dart
+        timeout-minutes: 5
 
   # Example app builds on every target platform. The SDK is pure Dart, so
   # these mainly guard the example + plugin integration (deep links, storage).
@@ -281,6 +292,10 @@ jobs:
           channel: stable
       - name: Build web
         run: flutter build web --no-tree-shake-icons
+        working-directory: example
+        timeout-minutes: 15
+      - name: Build web (Wasm)
+        run: flutter build web --wasm --no-tree-shake-icons
         working-directory: example
         timeout-minutes: 15
 
