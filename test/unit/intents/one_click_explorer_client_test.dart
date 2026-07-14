@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -124,6 +125,88 @@ void main() {
       );
     });
 
+    test('rejects non-positive request timeouts', () {
+      expect(
+        () => OneClickExplorerClient(requestTimeout: Duration.zero),
+        throwsArgumentError,
+      );
+      expect(
+        () => OneClickExplorerClient(
+          requestTimeout: const Duration(microseconds: -1),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test(
+      'times out a non-completing request with one failed terminal event',
+      () async {
+        final events = <NearLogEvent>[];
+        final response = Completer<http.Response>();
+        final client = OneClickExplorerClient(
+          requestTimeout: const Duration(milliseconds: 30),
+          logger: (event) {
+            events.add(event);
+            throw StateError('logger failure');
+          },
+          httpClient: MockClient((_) => response.future),
+        );
+        final stopwatch = Stopwatch()..start();
+
+        late Object escaped;
+        try {
+          await client.transactions().timeout(const Duration(seconds: 1));
+        } catch (error) {
+          escaped = error;
+        }
+
+        expect(
+          escaped,
+          isA<OneClickExplorerApiException>()
+              .having((error) => error.code, 'code', NearErrorCode.rpcTimeout)
+              .having((error) => error.retryable, 'retryable', isTrue),
+        );
+        expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 500)));
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestFailed,
+        ]);
+        expect(
+          events.where(
+            (event) => event.type == NearLogEventType.intentsRequestFailed,
+          ),
+          hasLength(1),
+        );
+        _expectOneIntentsTerminalEvent(events);
+      },
+    );
+
+    test('maps HTTP 408 to rpcTimeout without leaking response body', () async {
+      const privateBody = 'private-408-body-sentinel';
+      final events = <NearLogEvent>[];
+      final client = OneClickExplorerClient(
+        logger: events.add,
+        httpClient: MockClient((_) async => http.Response(privateBody, 408)),
+      );
+
+      late Object escaped;
+      try {
+        await client.transactions();
+      } catch (error) {
+        escaped = error;
+      }
+
+      expect(
+        escaped,
+        isA<OneClickExplorerApiException>()
+            .having((error) => error.statusCode, 'statusCode', 408)
+            .having((error) => error.code, 'code', NearErrorCode.rpcTimeout),
+      );
+      expect(events.last.metadata['statusCode'], 408);
+      _expectOneIntentsTerminalEvent(events);
+      _expectNoRenderedSentinel([...events, escaped], privateBody);
+    });
+
     test('supports const API exceptions without exposing their bodies', () {
       const exception = OneClickExplorerApiException(429, 'test-secret');
 
@@ -152,7 +235,7 @@ void main() {
         'https://explorer.near-intents.org',
       );
       expect(events.last.metadata['method'], 'GET');
-      expect(events.last.metadata['path'], '/api/v0/transactions');
+      expect(events.last.metadata['path'], '/transactions');
       expect(events.last.metadata['statusCode'], 200);
       expect(
         events.map((event) => event.toString()).join(),
@@ -234,7 +317,9 @@ void main() {
 
     test('normalizes supported endpoint transport errors', () async {
       const endpoint =
-          'https://userinfo-sentinel@transport.example.com/path-sentinel/?base-query-sentinel';
+          'https://userinfo-sentinel@transport.example.com/'
+          'credential-path-sentinel/user-data-path-sentinel/'
+          '?base-query-sentinel';
       final events = <NearLogEvent>[];
       var transportCalls = 0;
       final client = OneClickExplorerClient(
@@ -269,6 +354,7 @@ void main() {
         NearLogEventType.intentsRequestFailed,
       ]);
       _expectOneIntentsTerminalEvent(events);
+      _expectNoSensitivePathInDiagnostics(events);
       _expectNoTransportEndpointSentinels([...events, escaped]);
       expect(transportCalls, 1);
     });
@@ -300,5 +386,23 @@ void _expectNoTransportEndpointSentinels(Iterable<Object> values) {
     final rendered = value.toString();
     expect(rendered, isNot(contains('userinfo-sentinel')));
     expect(rendered, isNot(contains('query-sentinel')));
+  }
+}
+
+void _expectNoSensitivePathInDiagnostics(List<NearLogEvent> events) {
+  for (final sentinel in const [
+    'credential-path-sentinel',
+    'user-data-path-sentinel',
+  ]) {
+    for (final event in events) {
+      expect(event.metadata.toString(), isNot(contains(sentinel)));
+      expect(event.toString(), isNot(contains(sentinel)));
+    }
+  }
+}
+
+void _expectNoRenderedSentinel(Iterable<Object> values, String sentinel) {
+  for (final value in values) {
+    expect(value.toString(), isNot(contains(sentinel)));
   }
 }

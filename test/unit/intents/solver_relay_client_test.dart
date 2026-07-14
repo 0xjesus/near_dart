@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -133,6 +134,89 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('rejects non-positive request timeouts', () {
+      expect(
+        () => SolverRelayClient(requestTimeout: Duration.zero),
+        throwsArgumentError,
+      );
+      expect(
+        () =>
+            SolverRelayClient(requestTimeout: const Duration(microseconds: -1)),
+        throwsArgumentError,
+      );
+    });
+
+    test(
+      'times out a non-completing request with one failed terminal event',
+      () async {
+        final events = <NearLogEvent>[];
+        final response = Completer<http.Response>();
+        final client = SolverRelayClient(
+          requestTimeout: const Duration(milliseconds: 30),
+          logger: (event) {
+            events.add(event);
+            throw StateError('logger failure');
+          },
+          httpClient: MockClient((_) => response.future),
+        );
+        final stopwatch = Stopwatch()..start();
+
+        late Object escaped;
+        try {
+          await client
+              .getStatus('intent-hash')
+              .timeout(const Duration(seconds: 1));
+        } catch (error) {
+          escaped = error;
+        }
+
+        expect(
+          escaped,
+          isA<SolverRelayException>()
+              .having((error) => error.code, 'code', NearErrorCode.rpcTimeout)
+              .having((error) => error.retryable, 'retryable', isTrue),
+        );
+        expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 500)));
+        expect(events.map((event) => event.type), [
+          NearLogEventType.intentsRequestStarted,
+          NearLogEventType.intentsRequestFailed,
+        ]);
+        expect(
+          events.where(
+            (event) => event.type == NearLogEventType.intentsRequestFailed,
+          ),
+          hasLength(1),
+        );
+        _expectOneIntentsTerminalEvent(events);
+      },
+    );
+
+    test('maps HTTP 408 to rpcTimeout without leaking response body', () async {
+      const privateBody = 'private-408-body-sentinel';
+      final events = <NearLogEvent>[];
+      final client = SolverRelayClient(
+        logger: events.add,
+        httpClient: MockClient((_) async => http.Response(privateBody, 408)),
+      );
+
+      late Object escaped;
+      try {
+        await client.getStatus('intent-hash');
+      } catch (error) {
+        escaped = error;
+      }
+
+      expect(
+        escaped,
+        isA<SolverRelayException>()
+            .having((error) => error.statusCode, 'statusCode', 408)
+            .having((error) => error.code, 'code', NearErrorCode.rpcTimeout),
+      );
+      expect(events.last.metadata['statusCode'], 408);
+      _expectOneIntentsTerminalEvent(events);
+      _expectNoRenderedSentinel([...events, escaped], privateBody);
     });
 
     test(
@@ -388,7 +472,9 @@ void main() {
 
     test('normalizes supported endpoint transport errors', () async {
       const endpoint =
-          'https://userinfo-sentinel@transport.example.com/path-sentinel?query-sentinel';
+          'https://userinfo-sentinel@transport.example.com/'
+          'credential-path-sentinel/user-data-path-sentinel'
+          '?query-sentinel';
       final events = <NearLogEvent>[];
       var transportCalls = 0;
       final client = SolverRelayClient(
@@ -417,6 +503,7 @@ void main() {
         NearLogEventType.intentsRequestFailed,
       ]);
       _expectOneIntentsTerminalEvent(events);
+      _expectNoSensitivePathInDiagnostics(events);
       _expectNoTransportEndpointSentinels([...events, escaped]);
       expect(transportCalls, 1);
     });
@@ -448,6 +535,24 @@ void _expectNoTransportEndpointSentinels(Iterable<Object> values) {
     final rendered = value.toString();
     expect(rendered, isNot(contains('userinfo-sentinel')));
     expect(rendered, isNot(contains('query-sentinel')));
+  }
+}
+
+void _expectNoSensitivePathInDiagnostics(List<NearLogEvent> events) {
+  for (final sentinel in const [
+    'credential-path-sentinel',
+    'user-data-path-sentinel',
+  ]) {
+    for (final event in events) {
+      expect(event.metadata.toString(), isNot(contains(sentinel)));
+      expect(event.toString(), isNot(contains(sentinel)));
+    }
+  }
+}
+
+void _expectNoRenderedSentinel(Iterable<Object> values, String sentinel) {
+  for (final value in values) {
+    expect(value.toString(), isNot(contains(sentinel)));
   }
 }
 

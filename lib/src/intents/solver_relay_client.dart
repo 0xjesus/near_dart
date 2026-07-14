@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -8,7 +9,9 @@ import '../diagnostics/near_errors.dart';
 import 'one_click_auth.dart';
 import 'solver_relay_models.dart';
 
-/// Exception thrown when the solver relay returns an HTTP or JSON-RPC error.
+const String _solverRelayDiagnosticPath = '/rpc';
+
+/// Exception thrown when a solver relay request fails.
 class SolverRelayException extends NearSdkException {
   const SolverRelayException(this._message, {this.statusCode, this.body})
     : _codeOverride = null,
@@ -38,6 +41,18 @@ class SolverRelayException extends NearSdkException {
       super(
         code: NearErrorCode.invalidInput,
         message: 'Solver relay request is invalid.',
+      );
+
+  const SolverRelayException.timeout()
+    : _message = 'Solver relay request timed out.',
+      statusCode = null,
+      body = null,
+      _codeOverride = NearErrorCode.rpcTimeout,
+      _retryableOverride = true,
+      super(
+        code: NearErrorCode.rpcTimeout,
+        message: 'Solver relay request timed out.',
+        retryable: true,
       );
 
   const SolverRelayException.transport()
@@ -83,7 +98,9 @@ class SolverRelayClient {
     OneClickAuth? auth,
     NearLogger? logger,
     http.Client? httpClient,
-  }) : endpoint =
+    Duration requestTimeout = const Duration(seconds: 30),
+  }) : requestTimeout = _validateRequestTimeout(requestTimeout),
+       endpoint =
            endpoint ??
            Uri.parse('https://solver-relay-v2.chaindefuser.com/rpc'),
        auth = auth,
@@ -99,6 +116,11 @@ class SolverRelayClient {
 
   /// Receives safe operational diagnostics for solver relay requests.
   final NearLogger? logger;
+
+  /// Maximum wall-clock time allowed for one HTTP request.
+  ///
+  /// Defaults to 30 seconds.
+  final Duration requestTimeout;
 
   final http.Client _http;
   final bool _ownsHttpClient;
@@ -162,15 +184,19 @@ class SolverRelayClient {
         throw const SolverRelayException.invalidRequest();
       }
       try {
-        response = await _http.post(
-          validatedEndpoint.uri!,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            ...?auth?.headers,
-          },
-          body: body,
-        );
+        response = await _http
+            .post(
+              validatedEndpoint.uri!,
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                ...?auth?.headers,
+              },
+              body: body,
+            )
+            .timeout(requestTimeout);
+      } on TimeoutException {
+        throw const SolverRelayException.timeout();
       } catch (_) {
         throw const SolverRelayException.transport();
       }
@@ -215,7 +241,6 @@ class SolverRelayClient {
     int? statusCode,
   }) {
     final safeEndpoint = sanitizeDiagnosticEndpointOrigin(endpoint);
-    final endpointPath = sanitizeDiagnosticEndpointPath(endpoint);
     emitNearLog(
       logger,
       NearLogEvent(
@@ -229,7 +254,7 @@ class SolverRelayClient {
           'endpoint': safeEndpoint,
           'method': 'POST',
           'operation': operation,
-          if (endpointPath != null) 'path': endpointPath,
+          'path': _solverRelayDiagnosticPath,
           if (statusCode != null) 'statusCode': statusCode,
           'durationMs': stopwatch.elapsedMilliseconds,
         },
@@ -250,6 +275,7 @@ class SolverRelayClient {
 }
 
 NearErrorCode _codeForSolverFailure(int? statusCode) {
+  if (statusCode == 408) return NearErrorCode.rpcTimeout;
   if (statusCode == 429) return NearErrorCode.rateLimited;
   if (statusCode != null && statusCode >= 500) {
     return NearErrorCode.rpcUnavailable;
@@ -258,5 +284,18 @@ NearErrorCode _codeForSolverFailure(int? statusCode) {
 }
 
 bool _isRetryableSolverFailure(int? statusCode) {
-  return statusCode == 429 || (statusCode != null && statusCode >= 500);
+  return statusCode == 408 ||
+      statusCode == 429 ||
+      (statusCode != null && statusCode >= 500);
+}
+
+Duration _validateRequestTimeout(Duration requestTimeout) {
+  if (requestTimeout <= Duration.zero) {
+    throw ArgumentError.value(
+      requestTimeout,
+      'requestTimeout',
+      'Must be greater than Duration.zero',
+    );
+  }
+  return requestTimeout;
 }

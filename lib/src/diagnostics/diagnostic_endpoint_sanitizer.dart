@@ -67,15 +67,6 @@ String sanitizeDiagnosticEndpointOrigin(Object? endpoint) {
   }
 }
 
-/// Returns a path for diagnostic metadata only when its endpoint is safe.
-String? sanitizeDiagnosticEndpointPath(Object? endpoint) {
-  try {
-    return validateSupportedHttpEndpoint(endpoint).uri?.path;
-  } catch (_) {
-    return null;
-  }
-}
-
 Uri? _asUri(Object? endpoint) {
   return switch (endpoint) {
     Uri() => endpoint,

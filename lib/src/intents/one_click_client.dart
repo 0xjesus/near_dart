@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -13,10 +14,11 @@ enum _OneClickApiFailureKind {
   http,
   invalidEndpoint,
   invalidRequest,
+  timeout,
   transport,
 }
 
-/// Exception thrown when the 1Click API returns a non-2xx response.
+/// Exception thrown when a 1Click API request fails.
 class OneClickApiException extends NearSdkException {
   const OneClickApiException(this.statusCode, this.body)
     : _failureKind = _OneClickApiFailureKind.http,
@@ -43,6 +45,16 @@ class OneClickApiException extends NearSdkException {
         message: '1Click API request is invalid.',
       );
 
+  const OneClickApiException.timeout()
+    : statusCode = 0,
+      body = '',
+      _failureKind = _OneClickApiFailureKind.timeout,
+      super(
+        code: NearErrorCode.rpcTimeout,
+        message: '1Click API request timed out.',
+        retryable: true,
+      );
+
   const OneClickApiException.transport()
     : statusCode = 0,
       body = '',
@@ -62,6 +74,7 @@ class OneClickApiException extends NearSdkException {
     _OneClickApiFailureKind.http => _codeForHttpStatus(statusCode),
     _OneClickApiFailureKind.invalidEndpoint => NearErrorCode.invalidInput,
     _OneClickApiFailureKind.invalidRequest => NearErrorCode.invalidInput,
+    _OneClickApiFailureKind.timeout => NearErrorCode.rpcTimeout,
     _OneClickApiFailureKind.transport => NearErrorCode.rpcUnavailable,
   };
 
@@ -72,6 +85,7 @@ class OneClickApiException extends NearSdkException {
     _OneClickApiFailureKind.invalidEndpoint =>
       '1Click API endpoint is invalid or unsupported.',
     _OneClickApiFailureKind.invalidRequest => '1Click API request is invalid.',
+    _OneClickApiFailureKind.timeout => '1Click API request timed out.',
     _OneClickApiFailureKind.transport => '1Click API transport failed.',
   };
 
@@ -80,6 +94,7 @@ class OneClickApiException extends NearSdkException {
     _OneClickApiFailureKind.http => _isRetryableHttpStatus(statusCode),
     _OneClickApiFailureKind.invalidEndpoint => false,
     _OneClickApiFailureKind.invalidRequest => false,
+    _OneClickApiFailureKind.timeout => true,
     _OneClickApiFailureKind.transport => true,
   };
 
@@ -95,7 +110,9 @@ class OneClickClient {
     OneClickAuth? auth,
     NearLogger? logger,
     http.Client? httpClient,
-  }) : baseUri = baseUri ?? Uri.parse('https://1click.chaindefuser.com'),
+    Duration requestTimeout = const Duration(seconds: 30),
+  }) : requestTimeout = _validateRequestTimeout(requestTimeout),
+       baseUri = baseUri ?? Uri.parse('https://1click.chaindefuser.com'),
        auth = auth,
        logger = logger,
        _http = httpClient ?? http.Client(),
@@ -109,6 +126,11 @@ class OneClickClient {
 
   /// Receives safe operational diagnostics for 1Click requests.
   final NearLogger? logger;
+
+  /// Maximum wall-clock time allowed for one HTTP request.
+  ///
+  /// Defaults to 30 seconds.
+  final Duration requestTimeout;
 
   final http.Client _http;
   final bool _ownsHttpClient;
@@ -268,7 +290,13 @@ class OneClickClient {
         throw const OneClickApiException.invalidRequest();
       }
       try {
-        response = await _send(method, endpoint.uri!, body: encodedBody);
+        response = await _send(
+          method,
+          endpoint.uri!,
+          body: encodedBody,
+        ).timeout(requestTimeout);
+      } on TimeoutException {
+        throw const OneClickApiException.timeout();
       } catch (_) {
         throw const OneClickApiException.transport();
       }
@@ -308,7 +336,6 @@ class OneClickClient {
     int? statusCode,
   }) {
     final endpoint = sanitizeDiagnosticEndpointOrigin(uri);
-    final endpointPath = sanitizeDiagnosticEndpointPath(uri);
     emitNearLog(
       logger,
       NearLogEvent(
@@ -322,7 +349,7 @@ class OneClickClient {
           'endpoint': endpoint,
           'method': method,
           'operation': operation,
-          if (endpointPath != null) 'path': endpointPath,
+          'path': operation,
           if (statusCode != null) 'statusCode': statusCode,
           'durationMs': stopwatch.elapsedMilliseconds,
         },
@@ -371,11 +398,23 @@ class OneClickClient {
 }
 
 NearErrorCode _codeForHttpStatus(int statusCode) {
+  if (statusCode == 408) return NearErrorCode.rpcTimeout;
   if (statusCode == 429) return NearErrorCode.rateLimited;
   if (statusCode >= 500) return NearErrorCode.rpcUnavailable;
   return NearErrorCode.invalidResponse;
 }
 
 bool _isRetryableHttpStatus(int statusCode) {
-  return statusCode == 429 || statusCode >= 500;
+  return statusCode == 408 || statusCode == 429 || statusCode >= 500;
+}
+
+Duration _validateRequestTimeout(Duration requestTimeout) {
+  if (requestTimeout <= Duration.zero) {
+    throw ArgumentError.value(
+      requestTimeout,
+      'requestTimeout',
+      'Must be greater than Duration.zero',
+    );
+  }
+  return requestTimeout;
 }

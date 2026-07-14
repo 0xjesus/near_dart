@@ -145,6 +145,8 @@ class NearWalletController extends ChangeNotifier {
   final NearWalletLinkSource? _linkSource;
 
   static const _optionPrefsKey = 'near_wallet_connect_option';
+  static const _accountPrefsKey = 'near_wallet_connect_account';
+  static const _networkPrefsKey = 'near_wallet_connect_network';
   static const _hotAccountPrefsKey = 'near_wallet_connect_hot_account';
   static const _hotPublicKeyPrefsKey = 'near_wallet_connect_hot_public_key';
 
@@ -265,22 +267,66 @@ class NearWalletController extends ChangeNotifier {
 
   Future<void> _restore() async {
     final prefs = await SharedPreferences.getInstance();
-    final restoredOption = NearWalletOption.values
-        .asNameMap()[prefs.getString(_optionPrefsKey)];
     _account = null;
     _walletOption = null;
 
-    if (restoredOption == NearWalletOption.hot) {
-      await _restoreHot(prefs);
+    final optionName = prefs.getString(_optionPrefsKey);
+    var accountId = prefs.getString(_accountPrefsKey);
+    var networkId = prefs.getString(_networkPrefsKey);
+    if (optionName == null) {
+      if (accountId != null ||
+          networkId != null ||
+          prefs.getString(_hotAccountPrefsKey) != null ||
+          prefs.getString(_hotPublicKeyPrefsKey) != null) {
+        await _clearPersistedSession();
+      }
       return;
     }
 
-    // MyNearWallet and Intear both persist a key in the key store.
-    final accounts = await _mnwAdapter().getAccounts();
-    if (accounts.isEmpty) return;
+    final restoredOption = NearWalletOption.values.asNameMap()[optionName];
+    if (restoredOption == null) {
+      await _clearPersistedSession();
+      return;
+    }
 
-    final account = accounts.first;
-    final option = restoredOption ?? NearWalletOption.myNearWallet;
+    if (accountId == null && networkId == null) {
+      if (!await _migrateLegacySession(prefs, restoredOption)) return;
+      accountId = prefs.getString(_accountPrefsKey);
+      networkId = prefs.getString(_networkPrefsKey);
+    }
+    if (accountId == null || networkId == null) {
+      await _clearPersistedSession();
+      return;
+    }
+    if (networkId != _networkId) return;
+    if (!availableWallets.contains(restoredOption)) {
+      await _clearPersistedSession();
+      return;
+    }
+
+    if (restoredOption == NearWalletOption.hot) {
+      await _restoreHot(prefs, accountId);
+      return;
+    }
+
+    final AccountId parsedAccountId;
+    final KeyPairEd25519? key;
+    try {
+      parsedAccountId = AccountId(accountId);
+      key = await keyStore.getKey(parsedAccountId);
+    } catch (_) {
+      await _clearPersistedSession();
+      return;
+    }
+    if (key == null) {
+      await _clearPersistedSession();
+      return;
+    }
+
+    final account = WalletAccount(
+      accountId: parsedAccountId,
+      publicKey: key.publicKey,
+    );
     if (!await _verifyRestoredAccount(
       account,
       requireFunctionCallScope: true,
@@ -288,13 +334,39 @@ class NearWalletController extends ChangeNotifier {
     )) {
       return;
     }
-    _publishRestoredAccount(account, option);
+    _publishRestoredAccount(account, restoredOption);
   }
 
-  Future<void> _restoreHot(SharedPreferences prefs) async {
-    final accountId = prefs.getString(_hotAccountPrefsKey);
+  Future<bool> _migrateLegacySession(
+    SharedPreferences prefs,
+    NearWalletOption option,
+  ) async {
+    if (option == NearWalletOption.hot) {
+      final accountId = prefs.getString(_hotAccountPrefsKey);
+      final publicKey = prefs.getString(_hotPublicKeyPrefsKey);
+      if (accountId == null || publicKey == null) {
+        await _clearPersistedSession();
+        return false;
+      }
+      await _saveSession(option, accountId: accountId, hotPublicKey: publicKey);
+      return true;
+    }
+
+    final accounts = await keyStore.accounts();
+    if (accounts.length != 1 ||
+        await keyStore.getKey(accounts.single) == null) {
+      await _clearPersistedSession();
+      return false;
+    }
+    await _saveSession(option, accountId: accounts.single.value);
+    return true;
+  }
+
+  Future<void> _restoreHot(SharedPreferences prefs, String accountId) async {
     final publicKey = prefs.getString(_hotPublicKeyPrefsKey);
-    if (accountId == null || publicKey == null) {
+    final legacyAccountId = prefs.getString(_hotAccountPrefsKey);
+    if (publicKey == null ||
+        (legacyAccountId != null && legacyAccountId != accountId)) {
       await _clearPersistedSession();
       return;
     }
@@ -385,7 +457,6 @@ class NearWalletController extends ChangeNotifier {
     try {
       switch (wallet) {
         case NearWalletOption.myNearWallet:
-          await _saveOption(wallet);
           await _mnwAdapter().signIn(
             contractId: contractId,
             methodNames: methodNames,
@@ -399,9 +470,9 @@ class NearWalletController extends ChangeNotifier {
             removeStoredKeyOnFailure: true,
             clearPersistedSessionOnFailure: false,
           );
+          await _saveSession(wallet, accountId: result.account.accountId.value);
           _account = result.account;
           _walletOption = wallet;
-          await _saveOption(wallet);
           _set(busy: false);
           _logConnected(wallet);
         case NearWalletOption.hot:
@@ -412,13 +483,13 @@ class NearWalletController extends ChangeNotifier {
             removeStoredKeyOnFailure: false,
             clearPersistedSessionOnFailure: false,
           );
-          _account = account;
-          _walletOption = wallet;
-          await _saveOption(
+          await _saveSession(
             wallet,
-            hotAccountId: account.accountId.value,
+            accountId: account.accountId.value,
             hotPublicKey: account.publicKey.value,
           );
+          _account = account;
+          _walletOption = wallet;
           _set(busy: false);
           _logConnected(wallet);
       }
@@ -427,19 +498,23 @@ class NearWalletController extends ChangeNotifier {
     }
   }
 
-  Future<void> _saveOption(
+  Future<void> _saveSession(
     NearWalletOption option, {
-    String? hotAccountId,
+    required String accountId,
     String? hotPublicKey,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_optionPrefsKey, option.name);
-    if (hotAccountId != null) {
-      await prefs.setString(_hotAccountPrefsKey, hotAccountId);
-    }
-    if (hotPublicKey != null) {
+    await prefs.remove(_optionPrefsKey);
+    await prefs.setString(_accountPrefsKey, accountId);
+    await prefs.setString(_networkPrefsKey, _networkId);
+    if (option == NearWalletOption.hot && hotPublicKey != null) {
+      await prefs.setString(_hotAccountPrefsKey, accountId);
       await prefs.setString(_hotPublicKeyPrefsKey, hotPublicKey);
+    } else {
+      await prefs.remove(_hotAccountPrefsKey);
+      await prefs.remove(_hotPublicKeyPrefsKey);
     }
+    await prefs.setString(_optionPrefsKey, option.name);
   }
 
   Future<void> _verifyNewAccount(
@@ -461,10 +536,8 @@ class NearWalletController extends ChangeNotifier {
         await keyStore.removeKey(account.accountId);
       }
       if (clearPersistedSessionOnFailure) {
-        await _clearPersistedSession();
+        if (_account == null) await _clearPersistedSession();
       }
-      _account = null;
-      _walletOption = null;
       rethrow;
     }
   }
@@ -487,14 +560,17 @@ class NearWalletController extends ChangeNotifier {
           removeStoredKeyOnFailure: true,
           clearPersistedSessionOnFailure: true,
         );
+        await _saveSession(
+          NearWalletOption.myNearWallet,
+          accountId: account.accountId.value,
+        );
         _account = account;
         _walletOption = NearWalletOption.myNearWallet;
-        await _saveOption(NearWalletOption.myNearWallet);
         _set(busy: false);
         _logConnected(NearWalletOption.myNearWallet);
       } else {
         if (signInPending) {
-          await _clearPersistedSession();
+          if (_account == null) await _clearPersistedSession();
           _setException(
             const NearSdkException(
               code: NearErrorCode.cancelled,
@@ -514,7 +590,9 @@ class NearWalletController extends ChangeNotifier {
   /// Disconnects and clears the stored session.
   Future<void> disconnect() async {
     final account = _account;
-    if (account != null) await keyStore.removeKey(account.accountId);
+    if (account != null && _walletOption != NearWalletOption.hot) {
+      await keyStore.removeKey(account.accountId);
+    }
     await _clearPersistedSession();
     _account = null;
     _walletOption = null;
@@ -534,6 +612,8 @@ class NearWalletController extends ChangeNotifier {
   Future<void> _clearPersistedSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_optionPrefsKey);
+    await prefs.remove(_accountPrefsKey);
+    await prefs.remove(_networkPrefsKey);
     await prefs.remove(_hotAccountPrefsKey);
     await prefs.remove(_hotPublicKeyPrefsKey);
   }
@@ -618,6 +698,19 @@ class NearWalletController extends ChangeNotifier {
                 'signer() for gas-only calls with the function-call key.',
           );
       }
+
+      emitNearLog(
+        logger,
+        NearLogEvent(
+          level: NearLogLevel.info,
+          type: NearLogEventType.transactionSubmitted,
+          operation: 'sendTransactions',
+          metadata: {
+            'networkId': _networkId,
+            'transactionCount': outcomes.length,
+          },
+        ),
+      );
 
       final finality = securityPolicy.transactionFinality;
       if (finality != null) {
@@ -713,15 +806,6 @@ class NearWalletController extends ChangeNotifier {
   void _setException(NearSdkException exception, {bool? busy}) {
     _lastException = exception;
     _set(busy: busy);
-    emitNearLog(
-      logger,
-      NearLogEvent(
-        level: NearLogLevel.error,
-        type: NearLogEventType.walletFlowFailed,
-        operation: 'walletController',
-        metadata: {'code': exception.code.name, 'networkId': _networkId},
-      ),
-    );
   }
 
   void _set({bool? busy, bool clearException = false}) {

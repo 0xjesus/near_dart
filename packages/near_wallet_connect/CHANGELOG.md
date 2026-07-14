@@ -26,6 +26,10 @@
   credentials on retryable RPC failures while leaving the controller
   disconnected.
 - Persist the authentic HOT public key instead of restoring a placeholder.
+- Persist and restore the exact active wallet, account, and network tuple. A
+  disconnect or wallet switch no longer falls back to unrelated stored keys.
+- Emit `transactionSubmitted` before optional confirmation and avoid duplicate
+  controller terminal failures after adapter failures.
 
 ### Documentation
 
@@ -37,6 +41,9 @@
 - Legacy HOT sessions that contain only an account ID are cleared during
   `init()` and require the user to reconnect once so an authentic account/key
   pair can be persisted.
+- Legacy MyNearWallet/Intear option-only sessions migrate when exactly one local
+  key exists. Ambiguous multi-key session metadata is cleared while the keys are
+  retained for an explicit reconnect.
 
 ## 0.4.0
 

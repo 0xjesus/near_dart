@@ -380,11 +380,17 @@ class IntearWalletAdapter {
     required _IntearWalletFlow flow,
   }) async {
     WebSocketChannel? channel;
+    final budget = Stopwatch()..start();
     try {
       channel = _connect(Uri.parse('${config.bridgeUrl}/api/session/create'));
       final messages = StreamIterator(channel.stream);
 
-      if (!await messages.moveNext().timeout(const Duration(seconds: 30))) {
+      if (!await messages.moveNext().timeout(
+        _remainingResponseBudget(
+          budget,
+          stageLimit: const Duration(seconds: 30),
+        ),
+      )) {
         throw const IntearWalletException.transport();
       }
       late final Map<String, dynamic> session;
@@ -405,7 +411,9 @@ class IntearWalletAdapter {
       try {
         launched = await launchUrl(
           Uri.parse('intear://$method?session_id=$sessionId'),
-        );
+        ).timeout(_remainingResponseBudget(budget));
+      } on TimeoutException {
+        rethrow;
       } catch (_) {
         throw const IntearWalletException.deepLink();
       }
@@ -413,7 +421,9 @@ class IntearWalletAdapter {
         throw const IntearWalletException.deepLink();
       }
 
-      if (!await messages.moveNext().timeout(config.responseTimeout)) {
+      if (!await messages.moveNext().timeout(
+        _remainingResponseBudget(budget),
+      )) {
         throw const IntearWalletException.transport();
       }
       _callbackReceived(flow);
@@ -452,11 +462,21 @@ class IntearWalletAdapter {
       throw const IntearWalletException.transport();
     } finally {
       try {
-        await channel?.sink.close();
+        final closeFuture = channel?.sink.close();
+        if (closeFuture != null) {
+          unawaited(closeFuture.catchError((Object _) {}));
+        }
       } catch (_) {
         // Closing diagnostics must not replace the operation result.
       }
     }
+  }
+
+  Duration _remainingResponseBudget(Stopwatch budget, {Duration? stageLimit}) {
+    final remaining = config.responseTimeout - budget.elapsed;
+    if (remaining <= Duration.zero) throw TimeoutException('response timeout');
+    if (stageLimit != null && stageLimit < remaining) return stageLimit;
+    return remaining;
   }
 
   NearSdkException _normalizeIntearError(Object error) {

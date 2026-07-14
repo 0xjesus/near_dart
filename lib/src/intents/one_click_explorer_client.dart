@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -8,9 +9,9 @@ import '../diagnostics/near_errors.dart';
 import 'one_click_auth.dart';
 import 'one_click_models.dart';
 
-enum _OneClickExplorerFailureKind { http, invalidEndpoint, transport }
+enum _OneClickExplorerFailureKind { http, invalidEndpoint, timeout, transport }
 
-/// Exception thrown when the NEAR Intents Explorer API returns non-2xx.
+/// Exception thrown when a NEAR Intents Explorer API request fails.
 class OneClickExplorerApiException extends NearSdkException {
   const OneClickExplorerApiException(this.statusCode, this.body)
     : _failureKind = _OneClickExplorerFailureKind.http,
@@ -26,6 +27,16 @@ class OneClickExplorerApiException extends NearSdkException {
       super(
         code: NearErrorCode.invalidInput,
         message: 'Explorer API endpoint is invalid or unsupported.',
+      );
+
+  const OneClickExplorerApiException.timeout()
+    : statusCode = 0,
+      body = '',
+      _failureKind = _OneClickExplorerFailureKind.timeout,
+      super(
+        code: NearErrorCode.rpcTimeout,
+        message: 'Explorer API request timed out.',
+        retryable: true,
       );
 
   const OneClickExplorerApiException.transport()
@@ -46,6 +57,7 @@ class OneClickExplorerApiException extends NearSdkException {
   NearErrorCode get code => switch (_failureKind) {
     _OneClickExplorerFailureKind.http => _codeForExplorerHttpStatus(statusCode),
     _OneClickExplorerFailureKind.invalidEndpoint => NearErrorCode.invalidInput,
+    _OneClickExplorerFailureKind.timeout => NearErrorCode.rpcTimeout,
     _OneClickExplorerFailureKind.transport => NearErrorCode.rpcUnavailable,
   };
 
@@ -55,6 +67,7 @@ class OneClickExplorerApiException extends NearSdkException {
       'Explorer API request failed with HTTP $statusCode',
     _OneClickExplorerFailureKind.invalidEndpoint =>
       'Explorer API endpoint is invalid or unsupported.',
+    _OneClickExplorerFailureKind.timeout => 'Explorer API request timed out.',
     _OneClickExplorerFailureKind.transport => 'Explorer API transport failed.',
   };
 
@@ -64,6 +77,7 @@ class OneClickExplorerApiException extends NearSdkException {
       statusCode,
     ),
     _OneClickExplorerFailureKind.invalidEndpoint => false,
+    _OneClickExplorerFailureKind.timeout => true,
     _OneClickExplorerFailureKind.transport => true,
   };
 
@@ -300,7 +314,9 @@ class OneClickExplorerClient {
     OneClickAuth? auth,
     NearLogger? logger,
     http.Client? httpClient,
-  }) : baseUri =
+    Duration requestTimeout = const Duration(seconds: 30),
+  }) : requestTimeout = _validateRequestTimeout(requestTimeout),
+       baseUri =
            baseUri ?? Uri.parse('https://explorer.near-intents.org/api/v0'),
        auth = auth,
        logger = logger,
@@ -315,6 +331,11 @@ class OneClickExplorerClient {
 
   /// Receives safe operational diagnostics for Explorer API requests.
   final NearLogger? logger;
+
+  /// Maximum wall-clock time allowed for one HTTP request.
+  ///
+  /// Defaults to 30 seconds.
+  final Duration requestTimeout;
 
   final http.Client _http;
   final bool _ownsHttpClient;
@@ -342,10 +363,14 @@ class OneClickExplorerClient {
         throw const OneClickExplorerApiException.invalidEndpoint();
       }
       try {
-        response = await _http.get(
-          endpoint.uri!,
-          headers: {'Accept': 'application/json', ...?auth?.headers},
-        );
+        response = await _http
+            .get(
+              endpoint.uri!,
+              headers: {'Accept': 'application/json', ...?auth?.headers},
+            )
+            .timeout(requestTimeout);
+      } on TimeoutException {
+        throw const OneClickExplorerApiException.timeout();
       } catch (_) {
         throw const OneClickExplorerApiException.transport();
       }
@@ -397,7 +422,6 @@ class OneClickExplorerClient {
     int? statusCode,
   }) {
     final endpoint = sanitizeDiagnosticEndpointOrigin(uri);
-    final endpointPath = sanitizeDiagnosticEndpointPath(uri);
     emitNearLog(
       logger,
       NearLogEvent(
@@ -411,7 +435,7 @@ class OneClickExplorerClient {
           'endpoint': endpoint,
           'method': method,
           'operation': operation,
-          if (endpointPath != null) 'path': endpointPath,
+          'path': operation,
           if (statusCode != null) 'statusCode': statusCode,
           'durationMs': stopwatch.elapsedMilliseconds,
         },
@@ -438,13 +462,25 @@ class OneClickExplorerClient {
 }
 
 NearErrorCode _codeForExplorerHttpStatus(int statusCode) {
+  if (statusCode == 408) return NearErrorCode.rpcTimeout;
   if (statusCode == 429) return NearErrorCode.rateLimited;
   if (statusCode >= 500) return NearErrorCode.rpcUnavailable;
   return NearErrorCode.invalidResponse;
 }
 
 bool _isRetryableExplorerHttpStatus(int statusCode) {
-  return statusCode == 429 || statusCode >= 500;
+  return statusCode == 408 || statusCode == 429 || statusCode >= 500;
+}
+
+Duration _validateRequestTimeout(Duration requestTimeout) {
+  if (requestTimeout <= Duration.zero) {
+    throw ArgumentError.value(
+      requestTimeout,
+      'requestTimeout',
+      'Must be greater than Duration.zero',
+    );
+  }
+  return requestTimeout;
 }
 
 DateTime? _tryParseDate(Object? value) =>

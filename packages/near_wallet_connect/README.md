@@ -19,28 +19,20 @@ dependencies:
   near_wallet_connect: ^0.4.0
 ```
 
-## Use it (this is the whole integration)
+## Use it
+
+Start with the
+[lifecycle-safe ChangeNotifier recipe](https://github.com/0xjesus/near_dart/blob/main/docs/flutter-architectures.md#changenotifier-flutter-only),
+or select the Provider, Riverpod, or Bloc/Cubit recipe in the same guide. Each
+recipe handles and surfaces asynchronous `init()` failures, keeps the controller
+alive until initialization settles, and disposes it exactly once so its platform
+link subscription is cancelled. Do not drop the `init()` future or dispose the
+controller while it is still initializing.
+
+The examples below use `wallet` for the recipe-owned
+`NearWalletController`. Tapping this button opens the wallet picker:
 
 ```dart
-import 'package:near_wallet_connect/near_wallet_connect.dart';
-
-final wallet = NearWalletController(
-  network: MyNearWalletNetwork.testnet,
-  contractId: AccountId('app.testnet'),
-  callbackScheme: 'myapp', // your mobile deep-link scheme
-  securityPolicy: const NearWalletSecurityPolicy(
-    verifyAccessKeyOnConnect: true,
-    transactionFinality: TxExecutionStatus.final_,
-  ),
-);
-
-@override
-void initState() {
-  super.initState();
-  wallet.init(); // restores the session + processes redirect callbacks
-}
-
-// In your build() — tapping it opens the wallet picker:
 NearConnectButton(controller: wallet);
 ```
 

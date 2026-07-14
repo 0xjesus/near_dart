@@ -1,6 +1,7 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,10 +22,8 @@ class FakeBridge {
   Map<String, dynamic>? lastRequest;
 
   /// Wallet behaviour: given the request, produce the response.
-  Map<String, dynamic> Function(Map<String, dynamic> request) respond = (_) => {
-    'type': 'error',
-    'message': 'no responder configured',
-  };
+  FutureOr<Map<String, dynamic>> Function(Map<String, dynamic> request)
+  respond = (_) => {'type': 'error', 'message': 'no responder configured'};
 
   static Future<FakeBridge> start() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -41,7 +40,8 @@ class FakeBridge {
       ws.listen((raw) async {
         final message = jsonDecode(raw as String) as Map<String, dynamic>;
         bridge.lastRequest = message;
-        ws.add(jsonEncode(bridge.respond(message)));
+        final response = await bridge.respond(message);
+        if (ws.readyState == WebSocket.open) ws.add(jsonEncode(response));
       });
     });
     return bridge;
@@ -85,6 +85,7 @@ void main() {
     AccountId? contractId,
     NearLogger? logger,
     Duration responseTimeout = const Duration(seconds: 10),
+    Future<bool> Function(Uri uri)? launcher,
   }) => IntearWalletAdapter(
     config: IntearWalletConfig(
       origin: 'https://example.app',
@@ -94,10 +95,12 @@ void main() {
       responseTimeout: responseTimeout,
     ),
     keyStore: keyStore,
-    launchUrl: (uri) async {
-      bridge.launchedUris.add(uri);
-      return launchResult;
-    },
+    launchUrl:
+        launcher ??
+        (uri) async {
+          bridge.launchedUris.add(uri);
+          return launchResult;
+        },
     logger: logger,
   );
 
@@ -663,6 +666,80 @@ void main() {
   });
 
   group('failures and diagnostics', () {
+    test('launcher and bridge response share one timeout budget', () async {
+      bridge.respond = (_) async {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        return {
+          'type': 'connected',
+          'accounts': [
+            {'accountId': 'alice.testnet'},
+          ],
+        };
+      };
+      final stopwatch = Stopwatch()..start();
+
+      await expectLater(
+        adapter(
+          responseTimeout: const Duration(milliseconds: 200),
+          launcher: (_) async {
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+            return true;
+          },
+        ).signIn(),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.rpcTimeout,
+          ),
+        ),
+      );
+      stopwatch.stop();
+
+      expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 500)));
+    });
+
+    test('response timeout bounds a launcher that never completes', () async {
+      final events = <NearLogEvent>[];
+      final stopwatch = Stopwatch()..start();
+
+      final future = adapter(
+        logger: events.add,
+        responseTimeout: const Duration(milliseconds: 40),
+        launcher: (_) => Completer<bool>().future,
+      ).signIn();
+
+      await expectLater(
+        future,
+        throwsA(
+          isA<NearSdkException>()
+              .having((error) => error.code, 'code', NearErrorCode.rpcTimeout)
+              .having((error) => error.retryable, 'retryable', isTrue),
+        ),
+      );
+      stopwatch.stop();
+
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+      expect(events.map((event) => event.type), [
+        NearLogEventType.walletFlowOpened,
+        NearLogEventType.walletFlowFailed,
+      ]);
+      expect(
+        events.where(
+          (event) =>
+              event.type == NearLogEventType.walletFlowSucceeded ||
+              event.type == NearLogEventType.walletFlowFailed,
+        ),
+        hasLength(1),
+      );
+      expect(
+        events.last.metadata['failureCode'],
+        NearErrorCode.rpcTimeout.name,
+      );
+      expect(events.join('\n'), isNot(contains('sess-123')));
+      expect(events.join('\n'), isNot(contains('intear://')));
+    });
+
     test('types deep-link failures without exposing the link', () async {
       final events = <NearLogEvent>[];
       launchResult = false;

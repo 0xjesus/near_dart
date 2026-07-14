@@ -15,6 +15,8 @@ import 'package:near_wallet_connect/near_wallet_connect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _optionPrefsKey = 'near_wallet_connect_option';
+const _accountPrefsKey = 'near_wallet_connect_account';
+const _networkPrefsKey = 'near_wallet_connect_network';
 const _hotAccountPrefsKey = 'near_wallet_connect_hot_account';
 const _hotPublicKeyPrefsKey = 'near_wallet_connect_hot_public_key';
 const _sentinelSecret = 'controller-adapter-sentinel-secret';
@@ -165,6 +167,354 @@ void main() {
     );
     expect(controller.lastException?.code, NearErrorCode.notConnected);
     expect(controller.error, controller.lastException?.message);
+  });
+
+  group('active session persistence', () {
+    test('stored keys do not restore without active metadata', () async {
+      final keyStore = InMemoryKeyStore();
+      final account = await _storeAccount(keyStore, 'leftover.testnet');
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        keyStore: keyStore,
+        myNearWalletAdapterBuilder: (logger) => _FakeMyNearWalletAdapter(
+          keyStore: keyStore,
+          accounts: [account],
+          logger: logger,
+        ),
+      );
+
+      await controller.init();
+
+      expect(controller.account, isNull);
+      expect(controller.walletOption, isNull);
+      expect(await keyStore.getKey(account.accountId), isNotNull);
+    });
+
+    test('restores the selected account when two local keys exist', () async {
+      final keyStore = InMemoryKeyStore();
+      final first = await _storeAccount(keyStore, 'first.testnet');
+      final selected = await _storeAccount(keyStore, 'selected.testnet');
+      SharedPreferences.setMockInitialValues({
+        _optionPrefsKey: NearWalletOption.intear.name,
+        _accountPrefsKey: selected.accountId.value,
+        _networkPrefsKey: 'testnet',
+      });
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        keyStore: keyStore,
+        myNearWalletAdapterBuilder: (logger) => _FakeMyNearWalletAdapter(
+          keyStore: keyStore,
+          accounts: [first, selected],
+          logger: logger,
+        ),
+      );
+
+      await controller.init();
+
+      expect(controller.account, selected);
+      expect(controller.walletOption, NearWalletOption.intear);
+    });
+
+    test('migrates an explicit legacy wallet with one local key', () async {
+      final keyStore = InMemoryKeyStore();
+      final account = await _storeAccount(keyStore, 'legacy.testnet');
+      SharedPreferences.setMockInitialValues({
+        _optionPrefsKey: NearWalletOption.intear.name,
+      });
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        keyStore: keyStore,
+        myNearWalletAdapterBuilder: (logger) => _FakeMyNearWalletAdapter(
+          keyStore: keyStore,
+          accounts: [account],
+          logger: logger,
+        ),
+      );
+
+      await controller.init();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(controller.account, account);
+      expect(controller.walletOption, NearWalletOption.intear);
+      expect(prefs.getString(_accountPrefsKey), account.accountId.value);
+      expect(prefs.getString(_networkPrefsKey), 'testnet');
+    });
+
+    test('clears ambiguous legacy metadata without deleting keys', () async {
+      final keyStore = InMemoryKeyStore();
+      final first = await _storeAccount(keyStore, 'legacy-one.testnet');
+      final second = await _storeAccount(keyStore, 'legacy-two.testnet');
+      SharedPreferences.setMockInitialValues({
+        _optionPrefsKey: NearWalletOption.myNearWallet.name,
+      });
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        keyStore: keyStore,
+        myNearWalletAdapterBuilder: (logger) => _FakeMyNearWalletAdapter(
+          keyStore: keyStore,
+          accounts: [first, second],
+          logger: logger,
+        ),
+      );
+
+      await controller.init();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(controller.account, isNull);
+      expect(controller.walletOption, isNull);
+      expect(prefs.getString(_optionPrefsKey), isNull);
+      expect(prefs.getString(_accountPrefsKey), isNull);
+      expect(prefs.getString(_networkPrefsKey), isNull);
+      expect(await keyStore.accounts(), [first.accountId, second.accountId]);
+    });
+
+    test('restores only on the persisted network', () async {
+      final keyStore = InMemoryKeyStore();
+      final account = await _storeAccount(keyStore, 'network.testnet');
+      SharedPreferences.setMockInitialValues({
+        _optionPrefsKey: NearWalletOption.myNearWallet.name,
+        _accountPrefsKey: account.accountId.value,
+        _networkPrefsKey: 'testnet',
+      });
+      final mainnetController = _testController(
+        network: MyNearWalletNetwork.mainnet,
+        keyStore: keyStore,
+      );
+
+      await mainnetController.init();
+
+      expect(mainnetController.account, isNull);
+      expect(mainnetController.walletOption, isNull);
+
+      final testnetController = _testController(
+        network: MyNearWalletNetwork.testnet,
+        keyStore: keyStore,
+      );
+      await testnetController.init();
+
+      expect(testnetController.account, account);
+      expect(testnetController.walletOption, NearWalletOption.myNearWallet);
+    });
+
+    test(
+      'HOT disconnect cannot resurrect a previous MyNearWallet key',
+      () async {
+        final keyStore = InMemoryKeyStore();
+        final myNearAccount = await _storeAccount(keyStore, 'previous.near');
+        final hotKey = await KeyPairEd25519.generate();
+        final hotAccount = WalletAccount(
+          accountId: AccountId('active.near'),
+          publicKey: hotKey.publicKey,
+        );
+        SharedPreferences.setMockInitialValues({
+          _optionPrefsKey: NearWalletOption.myNearWallet.name,
+          _accountPrefsKey: myNearAccount.accountId.value,
+          _networkPrefsKey: 'mainnet',
+        });
+        final controller = _testController(
+          network: MyNearWalletNetwork.mainnet,
+          keyStore: keyStore,
+          hotWalletAdapterBuilder: (logger) =>
+              _FakeHotWalletAdapter(account: hotAccount, logger: logger),
+        );
+        await controller.init();
+
+        await controller.connect(wallet: NearWalletOption.hot);
+
+        var prefs = await SharedPreferences.getInstance();
+        expect(controller.account, hotAccount);
+        expect(prefs.getString(_accountPrefsKey), hotAccount.accountId.value);
+        expect(prefs.getString(_networkPrefsKey), 'mainnet');
+
+        await controller.disconnect();
+        expect(await keyStore.getKey(myNearAccount.accountId), isNotNull);
+
+        final restarted = _testController(
+          network: MyNearWalletNetwork.mainnet,
+          keyStore: keyStore,
+        );
+        await restarted.init();
+
+        prefs = await SharedPreferences.getInstance();
+        expect(restarted.account, isNull);
+        expect(restarted.walletOption, isNull);
+        expect(prefs.getString(_optionPrefsKey), isNull);
+        expect(prefs.getString(_accountPrefsKey), isNull);
+        expect(prefs.getString(_networkPrefsKey), isNull);
+      },
+    );
+
+    test('failed switch preserves the previous active session tuple', () async {
+      final keyStore = InMemoryKeyStore();
+      final previous = await _storeAccount(keyStore, 'previous.testnet');
+      final nextKey = await KeyPairEd25519.generate();
+      final next = WalletAccount(
+        accountId: AccountId('next.testnet'),
+        publicKey: nextKey.publicKey,
+      );
+      final security = _RecordingSecurity();
+      SharedPreferences.setMockInitialValues({
+        _optionPrefsKey: NearWalletOption.myNearWallet.name,
+        _accountPrefsKey: previous.accountId.value,
+        _networkPrefsKey: 'testnet',
+      });
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        keyStore: keyStore,
+        security: security,
+        policy: const NearWalletSecurityPolicy(verifyAccessKeyOnConnect: true),
+        intearWalletAdapterBuilder: (logger) => _FakeIntearWalletAdapter(
+          keyStore: keyStore,
+          account: next,
+          sessionKey: nextKey,
+          logger: logger,
+        ),
+      );
+      await controller.init();
+      security.verifyError = const NearSdkException(
+        code: NearErrorCode.accessKeyMismatch,
+        message: 'sanitized mismatch',
+      );
+
+      await controller.connect(wallet: NearWalletOption.intear);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(controller.account, previous);
+      expect(controller.walletOption, NearWalletOption.myNearWallet);
+      expect(controller.lastException?.code, NearErrorCode.accessKeyMismatch);
+      expect(
+        prefs.getString(_optionPrefsKey),
+        NearWalletOption.myNearWallet.name,
+      );
+      expect(prefs.getString(_accountPrefsKey), previous.accountId.value);
+      expect(prefs.getString(_networkPrefsKey), 'testnet');
+      expect(await keyStore.getKey(next.accountId), isNull);
+    });
+  });
+
+  group('controller transaction diagnostics', () {
+    test('emits submission before optional confirmation', () async {
+      final pair = await KeyPairEd25519.generate();
+      final account = WalletAccount(
+        accountId: AccountId('submitted.near'),
+        publicKey: pair.publicKey,
+      );
+      final events = <NearLogEvent>[];
+      var submittedSeenAtConfirmation = false;
+      final security = _RecordingSecurity(
+        onConfirm: () {
+          submittedSeenAtConfirmation = events.any(
+            (event) => event.type == NearLogEventType.transactionSubmitted,
+          );
+        },
+      );
+      final controller = _testController(
+        network: MyNearWalletNetwork.mainnet,
+        logger: events.add,
+        security: security,
+        policy: const NearWalletSecurityPolicy(
+          transactionFinality: TxExecutionStatus.final_,
+        ),
+        hotWalletAdapterBuilder: (logger) => _FakeHotWalletAdapter(
+          account: account,
+          outcomes: const <dynamic>[
+            {'transactionHash': 'hash'},
+          ],
+          logger: logger,
+        ),
+      );
+      await controller.connect(wallet: NearWalletOption.hot);
+      events.clear();
+
+      await controller.sendTransactions(const []);
+
+      expect(submittedSeenAtConfirmation, isTrue);
+      expect(events.map((event) => event.type), [
+        NearLogEventType.transactionSubmitted,
+        NearLogEventType.transactionFinalized,
+      ]);
+      expect(events.first.metadata, {
+        'networkId': 'mainnet',
+        'transactionCount': 1,
+      });
+    });
+
+    test('emits submission when confirmation is disabled', () async {
+      final pair = await KeyPairEd25519.generate();
+      final account = WalletAccount(
+        accountId: AccountId('unconfirmed.near'),
+        publicKey: pair.publicKey,
+      );
+      final events = <NearLogEvent>[];
+      final controller = _testController(
+        network: MyNearWalletNetwork.mainnet,
+        logger: events.add,
+        hotWalletAdapterBuilder: (logger) => _FakeHotWalletAdapter(
+          account: account,
+          outcomes: const <dynamic>[
+            {'transactionHash': 'hash'},
+          ],
+          logger: logger,
+        ),
+      );
+      await controller.connect(wallet: NearWalletOption.hot);
+      events.clear();
+
+      await controller.sendTransactions(const []);
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.transactionSubmitted,
+      ]);
+    });
+
+    test('does not duplicate an adapter terminal failure', () async {
+      final pair = await KeyPairEd25519.generate();
+      final account = WalletAccount(
+        accountId: AccountId('failed.near'),
+        publicKey: pair.publicKey,
+      );
+      final events = <NearLogEvent>[];
+      final controller = _testController(
+        network: MyNearWalletNetwork.mainnet,
+        logger: events.add,
+        hotWalletAdapterBuilder: (logger) => _FakeHotWalletAdapter(
+          account: account,
+          transactionError: const NearSdkException(
+            code: NearErrorCode.userRejected,
+            message: 'The wallet request was rejected.',
+          ),
+          emitTransactionLifecycle: true,
+          logger: logger,
+        ),
+      );
+      await controller.connect(wallet: NearWalletOption.hot);
+      events.clear();
+
+      await expectLater(
+        controller.sendTransactions(const []),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.userRejected,
+          ),
+        ),
+      );
+
+      expect(events.map((event) => event.type), [
+        NearLogEventType.walletFlowOpened,
+        NearLogEventType.walletFlowFailed,
+      ]);
+      expect(
+        events.where(
+          (event) =>
+              event.type == NearLogEventType.walletFlowSucceeded ||
+              event.type == NearLogEventType.walletFlowFailed,
+        ),
+        hasLength(1),
+      );
+      expect(events.last.operation, 'signAndSendTransactions');
+    });
   });
 
   group('restored security policy', () {
@@ -903,6 +1253,7 @@ void main() {
         await controller.connect(wallet: NearWalletOption.intear);
         await controller.disconnect();
         await controller.connect(wallet: NearWalletOption.hot);
+        await controller.connect(wallet: NearWalletOption.myNearWallet);
 
         expect(builderLoggers, hasLength(3));
         expect(
@@ -996,11 +1347,12 @@ class _ConfirmationCall {
 }
 
 class _RecordingSecurity extends NearWalletSecurity {
-  _RecordingSecurity({this.verifyError, this.onVerify})
+  _RecordingSecurity({this.verifyError, this.onVerify, this.onConfirm})
     : super(_CountingNearRpcClient());
 
   Object? verifyError;
   final void Function(_VerificationCall call)? onVerify;
+  final void Function()? onConfirm;
   final List<_VerificationCall> verifications = [];
   final List<_ConfirmationCall> confirmations = [];
 
@@ -1029,6 +1381,7 @@ class _RecordingSecurity extends NearWalletSecurity {
     required List<dynamic> outcomes,
     required TxExecutionStatus waitUntil,
   }) async {
+    onConfirm?.call();
     confirmations.add(
       _ConfirmationCall(
         senderAccountId: senderAccountId,
@@ -1151,6 +1504,8 @@ class _FakeHotWalletAdapter extends HotWalletAdapter {
   _FakeHotWalletAdapter({
     required this.account,
     this.outcomes = const <dynamic>[],
+    this.transactionError,
+    this.emitTransactionLifecycle = false,
     this.emitSentinel = false,
     NearLogger? logger,
   }) : super(
@@ -1161,6 +1516,8 @@ class _FakeHotWalletAdapter extends HotWalletAdapter {
 
   final WalletAccount account;
   final List<dynamic> outcomes;
+  final Object? transactionError;
+  final bool emitTransactionLifecycle;
   final bool emitSentinel;
 
   @override
@@ -1172,7 +1529,41 @@ class _FakeHotWalletAdapter extends HotWalletAdapter {
   @override
   Future<List<dynamic>> signAndSendTransactions({
     required List<Map<String, dynamic>> transactions,
-  }) async => outcomes;
+  }) async {
+    if (emitTransactionLifecycle) {
+      logger?.call(
+        NearLogEvent(
+          level: NearLogLevel.info,
+          type: NearLogEventType.walletFlowOpened,
+          operation: 'signAndSendTransactions',
+        ),
+      );
+    }
+    final error = transactionError;
+    if (error != null) {
+      if (emitTransactionLifecycle) {
+        logger?.call(
+          NearLogEvent(
+            level: NearLogLevel.error,
+            type: NearLogEventType.walletFlowFailed,
+            operation: 'signAndSendTransactions',
+            metadata: {'failureCode': NearErrorCode.userRejected.name},
+          ),
+        );
+      }
+      throw error;
+    }
+    if (emitTransactionLifecycle) {
+      logger?.call(
+        NearLogEvent(
+          level: NearLogLevel.info,
+          type: NearLogEventType.walletFlowSucceeded,
+          operation: 'signAndSendTransactions',
+        ),
+      );
+    }
+    return outcomes;
+  }
 }
 
 void _emitSentinel(NearLogger? logger) {

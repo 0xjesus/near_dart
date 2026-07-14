@@ -48,6 +48,13 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Resolve near_dart from this checkout
+        run: |
+          printf '%s\n' \
+            'dependency_overrides:' \
+            '  near_dart:' \
+            '    path: ../..' \
+            > pubspec_overrides.yaml
       - run: flutter pub get
       - run: flutter analyze lib test
       - run: flutter test

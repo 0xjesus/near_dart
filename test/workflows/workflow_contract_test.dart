@@ -8,6 +8,43 @@ Map<Object?, Object?> workflow(String path) {
   return (value as YamlMap).cast<Object?, Object?>();
 }
 
+List<String> jobCommands(String workflowPath, String jobName) {
+  final jobs = workflow(workflowPath)['jobs'] as YamlMap;
+  final job = jobs[jobName] as YamlMap;
+  final steps = job['steps'] as YamlList;
+  return steps
+      .whereType<YamlMap>()
+      .map((step) => step['run'])
+      .whereType<String>()
+      .toList();
+}
+
+void expectWalletCheckoutOverride(List<String> commands) {
+  final overrideIndex = commands.indexWhere(
+    (command) =>
+        command.contains("'dependency_overrides:'") &&
+        command.contains("'  near_dart:'") &&
+        command.contains("'    path: ../..'") &&
+        command.contains('> pubspec_overrides.yaml'),
+  );
+  final pubGetIndex = commands.indexOf('flutter pub get');
+  final analyzeIndex = commands.indexOf('flutter analyze lib test');
+  final testIndex = commands.indexOf('flutter test');
+
+  expect(overrideIndex, isNonNegative);
+  expect(overrideIndex, lessThan(pubGetIndex));
+  expect(pubGetIndex, lessThan(analyzeIndex));
+  expect(analyzeIndex, lessThan(testIndex));
+  expect(
+    commands.where(
+      (command) =>
+          command.contains('pub publish') &&
+          !command.contains('pub publish --dry-run'),
+    ),
+    isEmpty,
+  );
+}
+
 void main() {
   test('Windows uses the VS 2022 compatibility runner', () {
     final jobs = workflow('.github/workflows/test.yml')['jobs'] as YamlMap;
@@ -55,4 +92,35 @@ void main() {
       isTrue,
     );
   });
+
+  test('wallet CI resolves near_dart from the checkout before validation', () {
+    final commands = jobCommands(
+      '.github/workflows/test.yml',
+      'wallet-connect',
+    );
+
+    expectWalletCheckoutOverride(commands);
+    expect(
+      commands.where((command) => command.contains('pub publish')),
+      isEmpty,
+    );
+  });
+
+  test(
+    'wallet release validation uses checkout resolution without publishing',
+    () {
+      final commands = jobCommands(
+        '.github/workflows/release-check.yml',
+        'near-wallet-connect',
+      );
+
+      expectWalletCheckoutOverride(commands);
+      final publishIndex = commands.indexOf('dart pub publish --dry-run');
+      expect(publishIndex, greaterThan(commands.indexOf('flutter test')));
+      expect(
+        commands.where((command) => command == 'dart pub publish --dry-run'),
+        hasLength(1),
+      );
+    },
+  );
 }
