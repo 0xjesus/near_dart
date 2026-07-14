@@ -22,6 +22,31 @@ typedef IntearWalletAdapterBuilder =
 /// Creates a HOT adapter with the controller's logger.
 typedef HotWalletAdapterBuilder = HotWalletAdapter Function(NearLogger? logger);
 
+/// Supplies the initial wallet callback and subsequent deep links.
+///
+/// Applications normally use the controller's AppLinks-backed default. A
+/// custom source can provide both parts of the callback lifecycle as one
+/// valid dependency, including in deterministic tests.
+abstract interface class NearWalletLinkSource {
+  /// Returns the link that launched the application, if any.
+  Future<Uri?> getInitialLink();
+
+  /// Emits links received while the application is running.
+  Stream<Uri> get uriLinkStream;
+}
+
+class _AppLinksWalletLinkSource implements NearWalletLinkSource {
+  _AppLinksWalletLinkSource() : _appLinks = AppLinks();
+
+  final AppLinks _appLinks;
+
+  @override
+  Future<Uri?> getInitialLink() => _appLinks.getInitialLink();
+
+  @override
+  Stream<Uri> get uriLinkStream => _appLinks.uriLinkStream;
+}
+
 /// One controller for every supported NEAR wallet.
 ///
 /// ```dart
@@ -64,8 +89,7 @@ class NearWalletController extends ChangeNotifier {
     @visibleForTesting MyNearWalletAdapterBuilder? myNearWalletAdapterBuilder,
     @visibleForTesting IntearWalletAdapterBuilder? intearWalletAdapterBuilder,
     @visibleForTesting HotWalletAdapterBuilder? hotWalletAdapterBuilder,
-    @visibleForTesting Future<Uri?> Function()? initialLinkProvider,
-    @visibleForTesting Stream<Uri>? linkStream,
+    @visibleForTesting NearWalletLinkSource? linkSource,
   }) : keyStore =
            keyStore ?? (kIsWeb ? SharedPrefsKeyStore() : SecureKeyStore()),
        client =
@@ -76,12 +100,7 @@ class NearWalletController extends ChangeNotifier {
        _myNearWalletAdapterBuilder = myNearWalletAdapterBuilder,
        _intearWalletAdapterBuilder = intearWalletAdapterBuilder,
        _hotWalletAdapterBuilder = hotWalletAdapterBuilder,
-       _initialLinkProvider = initialLinkProvider,
-       _linkStream = linkStream,
-       assert(
-         (initialLinkProvider == null) == (linkStream == null),
-         'initialLinkProvider and linkStream must be provided together',
-       ) {
+       _linkSource = linkSource {
     this.security = security ?? NearWalletSecurity(this.client);
   }
 
@@ -123,8 +142,7 @@ class NearWalletController extends ChangeNotifier {
   final MyNearWalletAdapterBuilder? _myNearWalletAdapterBuilder;
   final IntearWalletAdapterBuilder? _intearWalletAdapterBuilder;
   final HotWalletAdapterBuilder? _hotWalletAdapterBuilder;
-  final Future<Uri?> Function()? _initialLinkProvider;
-  final Stream<Uri>? _linkStream;
+  final NearWalletLinkSource? _linkSource;
 
   static const _optionPrefsKey = 'near_wallet_connect_option';
   static const _hotAccountPrefsKey = 'near_wallet_connect_hot_account';
@@ -134,7 +152,6 @@ class NearWalletController extends ChangeNotifier {
   NearWalletOption? _walletOption;
   bool _busy = false;
   NearSdkException? _lastException;
-  AppLinks? _appLinks;
   StreamSubscription<Uri>? _linkSub;
 
   /// The connected account, or null.
@@ -232,21 +249,12 @@ class NearWalletController extends ChangeNotifier {
       if (_looksLikeCallback(Uri.base)) await _handleCallback(Uri.base);
       return;
     }
-    final initialLinkProvider = _initialLinkProvider;
-    if (initialLinkProvider != null) {
-      final initial = await initialLinkProvider();
-      if (initial != null && _looksLikeCallback(initial)) {
-        await _handleCallback(initial);
-      }
-      _listenForLinks(_linkStream!);
-      return;
-    }
-    _appLinks = AppLinks();
-    final initial = await _appLinks!.getInitialLink();
+    final linkSource = _linkSource ?? _AppLinksWalletLinkSource();
+    final initial = await linkSource.getInitialLink();
     if (initial != null && _looksLikeCallback(initial)) {
       await _handleCallback(initial);
     }
-    _listenForLinks(_appLinks!.uriLinkStream);
+    _listenForLinks(linkSource.uriLinkStream);
   }
 
   void _listenForLinks(Stream<Uri> links) {

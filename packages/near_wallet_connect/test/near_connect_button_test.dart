@@ -470,6 +470,186 @@ void main() {
     });
   });
 
+  group('MyNearWallet callback security integration', () {
+    test(
+      'verifies the promoted key before publishing the callback account',
+      () async {
+        final keyStore = InMemoryKeyStore();
+        final pendingKey = await KeyPairEd25519.generate();
+        final account = WalletAccount(
+          accountId: AccountId('callback.testnet'),
+          publicKey: pendingKey.publicKey,
+        );
+        final callback = Uri(
+          scheme: 'test',
+          host: 'callback',
+          queryParameters: {
+            'account_id': account.accountId.value,
+            'public_key': account.publicKey.value,
+            'signature': _sentinelSecret,
+            'payload': _sentinelSecret,
+          },
+        );
+        await keyStore.setPendingKey(pendingKey);
+        SharedPreferences.setMockInitialValues({
+          _optionPrefsKey: NearWalletOption.myNearWallet.name,
+        });
+
+        late NearWalletController controller;
+        final security = _RecordingSecurity(
+          onVerify: (call) {
+            expect(controller.account, isNull);
+            expect(controller.walletOption, isNull);
+          },
+        );
+        final events = <NearLogEvent>[];
+        final adapter = _FakeMyNearWalletAdapter(
+          keyStore: keyStore,
+          callbackAccount: account,
+          emitCallbackSentinel: true,
+          logger: events.add,
+        );
+        controller = _testController(
+          network: MyNearWalletNetwork.testnet,
+          keyStore: keyStore,
+          security: security,
+          policy: const NearWalletSecurityPolicy(
+            verifyAccessKeyOnConnect: true,
+          ),
+          logger: events.add,
+          linkSource: _FakeLinkSource(initialLink: callback),
+          myNearWalletAdapterBuilder: (logger) => adapter,
+        );
+
+        await controller.init();
+
+        final storedKey = await keyStore.getKey(account.accountId);
+        expect(adapter.completedCallback, same(callback));
+        expect(security.verifications, hasLength(1));
+        expect(security.verifications.single.account, same(account));
+        expect(
+          security.verifications.single.account.publicKey,
+          pendingKey.publicKey,
+        );
+        expect(security.verifications.single.requireFunctionCallScope, isTrue);
+        expect(storedKey?.publicKey, pendingKey.publicKey);
+        expect(await keyStore.getPendingKey(), isNull);
+        expect(controller.account, same(account));
+        expect(controller.walletOption, NearWalletOption.myNearWallet);
+        expect(controller.lastException, isNull);
+        expect(events.join('\n'), isNot(contains(_sentinelSecret)));
+      },
+    );
+
+    test(
+      'failed callback verification clears promoted key and session state',
+      () async {
+        final keyStore = InMemoryKeyStore();
+        final pendingKey = await KeyPairEd25519.generate();
+        final account = WalletAccount(
+          accountId: AccountId('rejected.testnet'),
+          publicKey: pendingKey.publicKey,
+        );
+        final callback = Uri(
+          scheme: 'test',
+          host: 'callback',
+          queryParameters: {
+            'account_id': account.accountId.value,
+            'public_key': account.publicKey.value,
+            'signature': _sentinelSecret,
+            'payload': _sentinelSecret,
+          },
+        );
+        await keyStore.setPendingKey(pendingKey);
+        SharedPreferences.setMockInitialValues({
+          _optionPrefsKey: NearWalletOption.myNearWallet.name,
+          _hotAccountPrefsKey: 'stale.near',
+          _hotPublicKeyPrefsKey: pendingKey.publicKey.value,
+        });
+        final events = <NearLogEvent>[];
+        final security = _RecordingSecurity(
+          verifyError: const NearSdkException(
+            code: NearErrorCode.accessKeyMismatch,
+            message: 'The wallet access key does not match the required scope.',
+          ),
+        );
+        final adapter = _FakeMyNearWalletAdapter(
+          keyStore: keyStore,
+          callbackAccount: account,
+          emitCallbackSentinel: true,
+          logger: events.add,
+        );
+        final controller = _testController(
+          network: MyNearWalletNetwork.testnet,
+          keyStore: keyStore,
+          security: security,
+          policy: const NearWalletSecurityPolicy(
+            verifyAccessKeyOnConnect: true,
+          ),
+          logger: events.add,
+          linkSource: _FakeLinkSource(initialLink: callback),
+          myNearWalletAdapterBuilder: (logger) => adapter,
+        );
+
+        await controller.init();
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(adapter.completedCallback, same(callback));
+        expect(security.verifications, hasLength(1));
+        expect(security.verifications.single.account, same(account));
+        expect(security.verifications.single.requireFunctionCallScope, isTrue);
+        expect(await keyStore.getKey(account.accountId), isNull);
+        expect(await keyStore.getPendingKey(), isNull);
+        expect(prefs.getString(_optionPrefsKey), isNull);
+        expect(prefs.getString(_hotAccountPrefsKey), isNull);
+        expect(prefs.getString(_hotPublicKeyPrefsKey), isNull);
+        expect(controller.account, isNull);
+        expect(controller.walletOption, isNull);
+        expect(controller.lastException?.code, NearErrorCode.accessKeyMismatch);
+        expect(controller.error, controller.lastException?.message);
+        expect(controller.error, isNot(contains(_sentinelSecret)));
+        expect(events.join('\n'), isNot(contains(_sentinelSecret)));
+      },
+    );
+
+    test('default-off callback publishes without verification', () async {
+      final keyStore = InMemoryKeyStore();
+      final pendingKey = await KeyPairEd25519.generate();
+      final account = WalletAccount(
+        accountId: AccountId('default-callback.testnet'),
+        publicKey: pendingKey.publicKey,
+      );
+      final callback = Uri(
+        scheme: 'test',
+        host: 'callback',
+        queryParameters: {
+          'account_id': account.accountId.value,
+          'public_key': account.publicKey.value,
+        },
+      );
+      await keyStore.setPendingKey(pendingKey);
+      final security = _RecordingSecurity();
+      final adapter = _FakeMyNearWalletAdapter(
+        keyStore: keyStore,
+        callbackAccount: account,
+      );
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        keyStore: keyStore,
+        security: security,
+        linkSource: _FakeLinkSource(initialLink: callback),
+        myNearWalletAdapterBuilder: (logger) => adapter,
+      );
+
+      await controller.init();
+
+      expect(adapter.completedCallback, same(callback));
+      expect(security.verifications, isEmpty);
+      expect(controller.account, same(account));
+      expect(controller.walletOption, NearWalletOption.myNearWallet);
+    });
+  });
+
   group('fresh wallet security integration', () {
     test(
       'Intear verifies function-call scope and HOT verifies existence',
@@ -761,6 +941,7 @@ NearWalletController _testController({
   MyNearWalletAdapter Function(NearLogger? logger)? myNearWalletAdapterBuilder,
   IntearWalletAdapter Function(NearLogger? logger)? intearWalletAdapterBuilder,
   HotWalletAdapter Function(NearLogger? logger)? hotWalletAdapterBuilder,
+  NearWalletLinkSource linkSource = const _FakeLinkSource(),
 }) {
   final resolvedKeyStore = keyStore ?? InMemoryKeyStore();
   return NearWalletController(
@@ -777,8 +958,7 @@ NearWalletController _testController({
     myNearWalletAdapterBuilder: myNearWalletAdapterBuilder,
     intearWalletAdapterBuilder: intearWalletAdapterBuilder,
     hotWalletAdapterBuilder: hotWalletAdapterBuilder,
-    initialLinkProvider: () async => null,
-    linkStream: const Stream<Uri>.empty(),
+    linkSource: linkSource,
   );
 }
 
@@ -863,6 +1043,8 @@ class _FakeMyNearWalletAdapter extends MyNearWalletAdapter {
   _FakeMyNearWalletAdapter({
     required KeyStore keyStore,
     this.accounts = const [],
+    this.callbackAccount,
+    this.emitCallbackSentinel = false,
     NearLogger? logger,
   }) : super(
          config: MyNearWalletConfig(
@@ -877,9 +1059,49 @@ class _FakeMyNearWalletAdapter extends MyNearWalletAdapter {
        );
 
   final List<WalletAccount> accounts;
+  final WalletAccount? callbackAccount;
+  final bool emitCallbackSentinel;
+  Uri? completedCallback;
 
   @override
   Future<List<WalletAccount>> getAccounts() async => accounts;
+
+  @override
+  Future<WalletAccount?> completeSignIn(Uri callbackUri) async {
+    completedCallback = callbackUri;
+    if (emitCallbackSentinel) {
+      logger?.call(
+        NearLogEvent(
+          level: NearLogLevel.info,
+          type: NearLogEventType.walletCallbackReceived,
+          operation: 'fakeMyNearWalletCallback',
+          metadata: {
+            'signature': callbackUri.queryParameters['signature'],
+            'payload': callbackUri.queryParameters['payload'],
+          },
+        ),
+      );
+    }
+    final account = callbackAccount;
+    final pendingKey = await keyStore.getPendingKey();
+    if (account == null || pendingKey == null) return null;
+    if (account.publicKey != pendingKey.publicKey) return null;
+    await keyStore.setKey(account.accountId, pendingKey);
+    await keyStore.clearPendingKey();
+    return account;
+  }
+}
+
+class _FakeLinkSource implements NearWalletLinkSource {
+  const _FakeLinkSource({this.initialLink});
+
+  final Uri? initialLink;
+
+  @override
+  Future<Uri?> getInitialLink() async => initialLink;
+
+  @override
+  Stream<Uri> get uriLinkStream => const Stream.empty();
 }
 
 class _FakeIntearWalletAdapter extends IntearWalletAdapter {
