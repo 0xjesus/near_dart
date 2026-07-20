@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.2.11
+// Source: nearcore OpenAPI 1.2.13
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -85,7 +85,7 @@ class AccessKeyInfoView {
 
 /// Generated from `AccessKeyList`.
 class AccessKeyList {
-  const AccessKeyList({this.keys});
+  const AccessKeyList({this.keys, this.last_key});
 
   factory AccessKeyList.fromJson(Map<String, dynamic> json) => AccessKeyList(
     keys: json[r'keys'] == null
@@ -93,12 +93,15 @@ class AccessKeyList {
         : (json[r'keys'] as List)
               .map<AccessKeyInfoView>((e) => AccessKeyInfoView.fromJson(e))
               .toList(),
+    last_key: json[r'last_key'] == null ? null : json[r'last_key'],
   );
 
   final List<AccessKeyInfoView>? keys;
+  final dynamic? last_key;
 
   Map<String, dynamic> toJson() => {
     if (keys != null) r'keys': keys?.map((e) => e.toJson()).toList(),
+    if (last_key != null) r'last_key': last_key,
   };
 }
 
@@ -2510,6 +2513,12 @@ class ExtCostsConfigView {
     this.ripemd160_block,
     this.sha256_base,
     this.sha256_byte,
+    this.sha3_256_base,
+    this.sha3_256_byte,
+    this.sha3_384_base,
+    this.sha3_384_byte,
+    this.sha3_512_base,
+    this.sha3_512_byte,
     this.storage_has_key_base,
     this.storage_has_key_byte,
     this.storage_iter_create_from_byte,
@@ -2709,6 +2718,24 @@ class ExtCostsConfigView {
     sha256_byte: json[r'sha256_byte'] == null
         ? null
         : json[r'sha256_byte'] as NearGas,
+    sha3_256_base: json[r'sha3_256_base'] == null
+        ? null
+        : json[r'sha3_256_base'] as NearGas,
+    sha3_256_byte: json[r'sha3_256_byte'] == null
+        ? null
+        : json[r'sha3_256_byte'] as NearGas,
+    sha3_384_base: json[r'sha3_384_base'] == null
+        ? null
+        : json[r'sha3_384_base'] as NearGas,
+    sha3_384_byte: json[r'sha3_384_byte'] == null
+        ? null
+        : json[r'sha3_384_byte'] as NearGas,
+    sha3_512_base: json[r'sha3_512_base'] == null
+        ? null
+        : json[r'sha3_512_base'] as NearGas,
+    sha3_512_byte: json[r'sha3_512_byte'] == null
+        ? null
+        : json[r'sha3_512_byte'] as NearGas,
     storage_has_key_base: json[r'storage_has_key_base'] == null
         ? null
         : json[r'storage_has_key_base'] as NearGas,
@@ -2884,6 +2911,12 @@ class ExtCostsConfigView {
   final NearGas? ripemd160_block;
   final NearGas? sha256_base;
   final NearGas? sha256_byte;
+  final NearGas? sha3_256_base;
+  final NearGas? sha3_256_byte;
+  final NearGas? sha3_384_base;
+  final NearGas? sha3_384_byte;
+  final NearGas? sha3_512_base;
+  final NearGas? sha3_512_byte;
   final NearGas? storage_has_key_base;
   final NearGas? storage_has_key_byte;
   final NearGas? storage_iter_create_from_byte;
@@ -3008,6 +3041,12 @@ class ExtCostsConfigView {
     if (ripemd160_block != null) r'ripemd160_block': ripemd160_block,
     if (sha256_base != null) r'sha256_base': sha256_base,
     if (sha256_byte != null) r'sha256_byte': sha256_byte,
+    if (sha3_256_base != null) r'sha3_256_base': sha3_256_base,
+    if (sha3_256_byte != null) r'sha3_256_byte': sha3_256_byte,
+    if (sha3_384_base != null) r'sha3_384_base': sha3_384_base,
+    if (sha3_384_byte != null) r'sha3_384_byte': sha3_384_byte,
+    if (sha3_512_base != null) r'sha3_512_base': sha3_512_base,
+    if (sha3_512_byte != null) r'sha3_512_byte': sha3_512_byte,
     if (storage_has_key_base != null)
       r'storage_has_key_base': storage_has_key_base,
     if (storage_has_key_byte != null)
@@ -3073,51 +3112,6 @@ class ExtCostsConfigView {
       r'yield_create_with_id_base': yield_create_with_id_base,
     if (yield_resume_base != null) r'yield_resume_base': yield_resume_base,
     if (yield_resume_byte != null) r'yield_resume_byte': yield_resume_byte,
-  };
-}
-
-/// Generated from `ExternalStorageConfig`.
-class ExternalStorageConfig {
-  const ExternalStorageConfig({
-    this.external_storage_fallback_threshold,
-    this.location,
-    this.num_concurrent_requests,
-    this.num_concurrent_requests_during_catchup,
-  });
-
-  factory ExternalStorageConfig.fromJson(Map<String, dynamic> json) =>
-      ExternalStorageConfig(
-        external_storage_fallback_threshold:
-            json[r'external_storage_fallback_threshold'] == null
-            ? null
-            : (json[r'external_storage_fallback_threshold'] as num).toInt(),
-        location: json[r'location'] == null
-            ? null
-            : ExternalStorageLocation.fromJson(json[r'location']),
-        num_concurrent_requests: json[r'num_concurrent_requests'] == null
-            ? null
-            : (json[r'num_concurrent_requests'] as num).toInt(),
-        num_concurrent_requests_during_catchup:
-            json[r'num_concurrent_requests_during_catchup'] == null
-            ? null
-            : (json[r'num_concurrent_requests_during_catchup'] as num).toInt(),
-      );
-
-  final int? external_storage_fallback_threshold;
-  final ExternalStorageLocation? location;
-  final int? num_concurrent_requests;
-  final int? num_concurrent_requests_during_catchup;
-
-  Map<String, dynamic> toJson() => {
-    if (external_storage_fallback_threshold != null)
-      r'external_storage_fallback_threshold':
-          external_storage_fallback_threshold,
-    if (location != null) r'location': location?.toJson(),
-    if (num_concurrent_requests != null)
-      r'num_concurrent_requests': num_concurrent_requests,
-    if (num_concurrent_requests_during_catchup != null)
-      r'num_concurrent_requests_during_catchup':
-          num_concurrent_requests_during_catchup,
   };
 }
 
@@ -6566,7 +6560,6 @@ class RpcClientConfigResponse {
     this.state_request_throttle_period,
     this.state_requests_per_throttle_period,
     this.state_sync,
-    this.state_sync_external_backoff,
     this.state_sync_external_timeout,
     this.state_sync_p2p_timeout,
     this.state_sync_retry_backoff,
@@ -6582,6 +6575,7 @@ class RpcClientConfigResponse {
     this.ttl_account_id_router,
     this.tx_routing_height_horizon,
     this.version,
+    this.view_access_keys_limit,
     this.view_client_threads,
   });
 
@@ -6773,11 +6767,6 @@ class RpcClientConfigResponse {
     state_sync: json[r'state_sync'] == null
         ? null
         : StateSyncConfig.fromJson(json[r'state_sync']),
-    state_sync_external_backoff: json[r'state_sync_external_backoff'] == null
-        ? null
-        : (json[r'state_sync_external_backoff'] as List)
-              .map<int>((e) => (e as num).toInt())
-              .toList(),
     state_sync_external_timeout: json[r'state_sync_external_timeout'] == null
         ? null
         : (json[r'state_sync_external_timeout'] as List)
@@ -6837,6 +6826,9 @@ class RpcClientConfigResponse {
     version: json[r'version'] == null
         ? null
         : Version.fromJson(json[r'version']),
+    view_access_keys_limit: json[r'view_access_keys_limit'] == null
+        ? null
+        : (json[r'view_access_keys_limit'] as num).toInt(),
     view_client_threads: json[r'view_client_threads'] == null
         ? null
         : (json[r'view_client_threads'] as num).toInt(),
@@ -6897,7 +6889,6 @@ class RpcClientConfigResponse {
   final List<int>? state_request_throttle_period;
   final int? state_requests_per_throttle_period;
   final StateSyncConfig? state_sync;
-  final List<int>? state_sync_external_backoff;
   final List<int>? state_sync_external_timeout;
   final List<int>? state_sync_p2p_timeout;
   final List<int>? state_sync_retry_backoff;
@@ -6913,6 +6904,7 @@ class RpcClientConfigResponse {
   final List<int>? ttl_account_id_router;
   final int? tx_routing_height_horizon;
   final Version? version;
+  final int? view_access_keys_limit;
   final int? view_client_threads;
 
   Map<String, dynamic> toJson() => {
@@ -7012,8 +7004,6 @@ class RpcClientConfigResponse {
     if (state_requests_per_throttle_period != null)
       r'state_requests_per_throttle_period': state_requests_per_throttle_period,
     if (state_sync != null) r'state_sync': state_sync?.toJson(),
-    if (state_sync_external_backoff != null)
-      r'state_sync_external_backoff': state_sync_external_backoff,
     if (state_sync_external_timeout != null)
       r'state_sync_external_timeout': state_sync_external_timeout,
     if (state_sync_p2p_timeout != null)
@@ -7043,6 +7033,8 @@ class RpcClientConfigResponse {
     if (tx_routing_height_horizon != null)
       r'tx_routing_height_horizon': tx_routing_height_horizon,
     if (version != null) r'version': version?.toJson(),
+    if (view_access_keys_limit != null)
+      r'view_access_keys_limit': view_access_keys_limit,
     if (view_client_threads != null)
       r'view_client_threads': view_client_threads,
   };
@@ -8455,6 +8447,7 @@ class RpcViewAccessKeyListResponse {
     this.block_hash,
     this.block_height,
     this.keys,
+    this.last_key,
   });
 
   factory RpcViewAccessKeyListResponse.fromJson(Map<String, dynamic> json) =>
@@ -8470,16 +8463,19 @@ class RpcViewAccessKeyListResponse {
             : (json[r'keys'] as List)
                   .map<AccessKeyInfoView>((e) => AccessKeyInfoView.fromJson(e))
                   .toList(),
+        last_key: json[r'last_key'] == null ? null : json[r'last_key'],
       );
 
   final CryptoHash? block_hash;
   final int? block_height;
   final List<AccessKeyInfoView>? keys;
+  final dynamic? last_key;
 
   Map<String, dynamic> toJson() => {
     if (block_hash != null) r'block_hash': block_hash,
     if (block_height != null) r'block_height': block_height,
     if (keys != null) r'keys': keys?.map((e) => e.toJson()).toList(),
+    if (last_key != null) r'last_key': last_key,
   };
 }
 
@@ -9718,7 +9714,6 @@ class VMConfigView {
     this.chain_id_host_fn,
     this.discard_custom_sections,
     this.eth_implicit_accounts,
-    this.eth_implicit_global_contract,
     this.ext_costs,
     this.fix_contract_loading_cost,
     this.gas_key_host_fns,
@@ -9732,6 +9727,7 @@ class VMConfigView {
     this.p256_verify_host_fn,
     this.reftypes_bulk_memory,
     this.regular_op_cost,
+    this.sha3_host_fns,
     this.storage_get_mode,
     this.vm_kind,
     this.yield_with_id_host_fns,
@@ -9750,9 +9746,6 @@ class VMConfigView {
     eth_implicit_accounts: json[r'eth_implicit_accounts'] == null
         ? null
         : json[r'eth_implicit_accounts'] as bool,
-    eth_implicit_global_contract: json[r'eth_implicit_global_contract'] == null
-        ? null
-        : json[r'eth_implicit_global_contract'] as bool,
     ext_costs: json[r'ext_costs'] == null
         ? null
         : ExtCostsConfigView.fromJson(json[r'ext_costs']),
@@ -9792,6 +9785,9 @@ class VMConfigView {
     regular_op_cost: json[r'regular_op_cost'] == null
         ? null
         : (json[r'regular_op_cost'] as num).toInt(),
+    sha3_host_fns: json[r'sha3_host_fns'] == null
+        ? null
+        : json[r'sha3_host_fns'] as bool,
     storage_get_mode: json[r'storage_get_mode'] == null
         ? null
         : StorageGetMode.fromJson(json[r'storage_get_mode']),
@@ -9807,7 +9803,6 @@ class VMConfigView {
   final bool? chain_id_host_fn;
   final bool? discard_custom_sections;
   final bool? eth_implicit_accounts;
-  final bool? eth_implicit_global_contract;
   final ExtCostsConfigView? ext_costs;
   final bool? fix_contract_loading_cost;
   final bool? gas_key_host_fns;
@@ -9821,6 +9816,7 @@ class VMConfigView {
   final bool? p256_verify_host_fn;
   final bool? reftypes_bulk_memory;
   final int? regular_op_cost;
+  final bool? sha3_host_fns;
   final StorageGetMode? storage_get_mode;
   final VMKind? vm_kind;
   final bool? yield_with_id_host_fns;
@@ -9833,8 +9829,6 @@ class VMConfigView {
       r'discard_custom_sections': discard_custom_sections,
     if (eth_implicit_accounts != null)
       r'eth_implicit_accounts': eth_implicit_accounts,
-    if (eth_implicit_global_contract != null)
-      r'eth_implicit_global_contract': eth_implicit_global_contract,
     if (ext_costs != null) r'ext_costs': ext_costs?.toJson(),
     if (fix_contract_loading_cost != null)
       r'fix_contract_loading_cost': fix_contract_loading_cost,
@@ -9856,6 +9850,7 @@ class VMConfigView {
     if (reftypes_bulk_memory != null)
       r'reftypes_bulk_memory': reftypes_bulk_memory,
     if (regular_op_cost != null) r'regular_op_cost': regular_op_cost,
+    if (sha3_host_fns != null) r'sha3_host_fns': sha3_host_fns,
     if (storage_get_mode != null)
       r'storage_get_mode': storage_get_mode?.toJson(),
     if (vm_kind != null) r'vm_kind': vm_kind?.toJson(),

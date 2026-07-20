@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.2.11
+// Source: nearcore OpenAPI 1.2.13
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names
@@ -22,7 +22,7 @@ class NearJsonRpcClient {
     : _http = httpClient ?? http.Client();
 
   /// nearcore OpenAPI spec version this client was generated from.
-  static const specVersion = '1.2.11';
+  static const specVersion = '1.2.13';
   final String endpoint;
   final http.Client _http;
   var _id = 0;
