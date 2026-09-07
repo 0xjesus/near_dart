@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.2.11
+// Source: nearcore OpenAPI 1.3.24
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -85,7 +85,7 @@ class AccessKeyInfoView {
 
 /// Generated from `AccessKeyList`.
 class AccessKeyList {
-  const AccessKeyList({this.keys});
+  const AccessKeyList({this.keys, this.last_key});
 
   factory AccessKeyList.fromJson(Map<String, dynamic> json) => AccessKeyList(
     keys: json[r'keys'] == null
@@ -93,12 +93,15 @@ class AccessKeyList {
         : (json[r'keys'] as List)
               .map<AccessKeyInfoView>((e) => AccessKeyInfoView.fromJson(e))
               .toList(),
+    last_key: json[r'last_key'] == null ? null : json[r'last_key'],
   );
 
   final List<AccessKeyInfoView>? keys;
+  final dynamic? last_key;
 
   Map<String, dynamic> toJson() => {
     if (keys != null) r'keys': keys?.map((e) => e.toJson()).toList(),
+    if (last_key != null) r'last_key': last_key,
   };
 }
 
@@ -256,20 +259,38 @@ class AccountInfo {
   };
 }
 
+/// Generated from `AccountState`.
+enum AccountState {
+  initialized(r'initialized'),
+  uninitialized(r'uninitialized');
+
+  const AccountState(this.wireValue);
+  final String wireValue;
+
+  static AccountState fromJson(dynamic json) =>
+      values.firstWhere((e) => e.wireValue == json);
+  String toJson() => wireValue;
+}
+
 /// Generated from `AccountView`.
 class AccountView {
   const AccountView({
     this.amount,
+    this.bootstrap_nonce,
     this.code_hash,
     this.global_contract_account_id,
     this.global_contract_hash,
     this.locked,
+    this.state,
     this.storage_paid_at,
     this.storage_usage,
   });
 
   factory AccountView.fromJson(Map<String, dynamic> json) => AccountView(
     amount: json[r'amount'] == null ? null : json[r'amount'] as NearToken,
+    bootstrap_nonce: json[r'bootstrap_nonce'] == null
+        ? null
+        : (json[r'bootstrap_nonce'] as num).toInt(),
     code_hash: json[r'code_hash'] == null
         ? null
         : json[r'code_hash'] as CryptoHash,
@@ -280,6 +301,9 @@ class AccountView {
         ? null
         : json[r'global_contract_hash'],
     locked: json[r'locked'] == null ? null : json[r'locked'] as NearToken,
+    state: json[r'state'] == null
+        ? null
+        : AccountState.fromJson(json[r'state']),
     storage_paid_at: json[r'storage_paid_at'] == null
         ? null
         : (json[r'storage_paid_at'] as num).toInt(),
@@ -289,21 +313,25 @@ class AccountView {
   );
 
   final NearToken? amount;
+  final int? bootstrap_nonce;
   final CryptoHash? code_hash;
   final dynamic? global_contract_account_id;
   final dynamic? global_contract_hash;
   final NearToken? locked;
+  final AccountState? state;
   final int? storage_paid_at;
   final int? storage_usage;
 
   Map<String, dynamic> toJson() => {
     if (amount != null) r'amount': amount,
+    if (bootstrap_nonce != null) r'bootstrap_nonce': bootstrap_nonce,
     if (code_hash != null) r'code_hash': code_hash,
     if (global_contract_account_id != null)
       r'global_contract_account_id': global_contract_account_id,
     if (global_contract_hash != null)
       r'global_contract_hash': global_contract_hash,
     if (locked != null) r'locked': locked,
+    if (state != null) r'state': state?.toJson(),
     if (storage_paid_at != null) r'storage_paid_at': storage_paid_at,
     if (storage_usage != null) r'storage_usage': storage_usage,
   };
@@ -574,6 +602,7 @@ class BandwidthRequestsV1 {
 class BlockHeaderInnerLiteView {
   const BlockHeaderInnerLiteView({
     this.block_merkle_root,
+    this.chunk_execution_root,
     this.epoch_id,
     this.height,
     this.next_bp_hash,
@@ -589,6 +618,9 @@ class BlockHeaderInnerLiteView {
         block_merkle_root: json[r'block_merkle_root'] == null
             ? null
             : json[r'block_merkle_root'] as CryptoHash,
+        chunk_execution_root: json[r'chunk_execution_root'] == null
+            ? null
+            : json[r'chunk_execution_root'],
         epoch_id: json[r'epoch_id'] == null
             ? null
             : json[r'epoch_id'] as CryptoHash,
@@ -616,6 +648,7 @@ class BlockHeaderInnerLiteView {
       );
 
   final CryptoHash? block_merkle_root;
+  final dynamic? chunk_execution_root;
   final CryptoHash? epoch_id;
   final int? height;
   final CryptoHash? next_bp_hash;
@@ -627,6 +660,8 @@ class BlockHeaderInnerLiteView {
 
   Map<String, dynamic> toJson() => {
     if (block_merkle_root != null) r'block_merkle_root': block_merkle_root,
+    if (chunk_execution_root != null)
+      r'chunk_execution_root': chunk_execution_root,
     if (epoch_id != null) r'epoch_id': epoch_id,
     if (height != null) r'height': height,
     if (next_bp_hash != null) r'next_bp_hash': next_bp_hash,
@@ -648,6 +683,7 @@ class BlockHeaderView {
     this.challenges_result,
     this.challenges_root,
     this.chunk_endorsements,
+    this.chunk_execution_root,
     this.chunk_headers_root,
     this.chunk_mask,
     this.chunk_receipts_root,
@@ -710,6 +746,9 @@ class BlockHeaderView {
                 (e) => (e as List).map<int>((e) => (e as num).toInt()).toList(),
               )
               .toList(),
+    chunk_execution_root: json[r'chunk_execution_root'] == null
+        ? null
+        : json[r'chunk_execution_root'],
     chunk_headers_root: json[r'chunk_headers_root'] == null
         ? null
         : json[r'chunk_headers_root'] as CryptoHash,
@@ -813,6 +852,7 @@ class BlockHeaderView {
   final List<SlashedValidator>? challenges_result;
   final CryptoHash? challenges_root;
   final List<List<int>>? chunk_endorsements;
+  final dynamic? chunk_execution_root;
   final CryptoHash? chunk_headers_root;
   final List<bool>? chunk_mask;
   final CryptoHash? chunk_receipts_root;
@@ -853,6 +893,8 @@ class BlockHeaderView {
       r'challenges_result': challenges_result?.map((e) => e.toJson()).toList(),
     if (challenges_root != null) r'challenges_root': challenges_root,
     if (chunk_endorsements != null) r'chunk_endorsements': chunk_endorsements,
+    if (chunk_execution_root != null)
+      r'chunk_execution_root': chunk_execution_root,
     if (chunk_headers_root != null) r'chunk_headers_root': chunk_headers_root,
     if (chunk_mask != null) r'chunk_mask': chunk_mask,
     if (chunk_receipts_root != null)
@@ -1045,6 +1087,107 @@ class ChunkDistributionUris {
   };
 }
 
+/// Generated from `ChunkExecutionProofView`.
+class ChunkExecutionProofView {
+  const ChunkExecutionProofView({
+    this.certifying_block_header_lite,
+    this.certifying_block_proof,
+    this.roots,
+    this.roots_proof,
+  });
+
+  factory ChunkExecutionProofView.fromJson(Map<String, dynamic> json) =>
+      ChunkExecutionProofView(
+        certifying_block_header_lite:
+            json[r'certifying_block_header_lite'] == null
+            ? null
+            : LightClientBlockLiteView.fromJson(
+                json[r'certifying_block_header_lite'],
+              ),
+        certifying_block_proof: json[r'certifying_block_proof'] == null
+            ? null
+            : (json[r'certifying_block_proof'] as List)
+                  .map<MerklePathItem>((e) => MerklePathItem.fromJson(e))
+                  .toList(),
+        roots: json[r'roots'] == null
+            ? null
+            : ChunkExecutionRoots.fromJson(json[r'roots']),
+        roots_proof: json[r'roots_proof'] == null
+            ? null
+            : (json[r'roots_proof'] as List)
+                  .map<MerklePathItem>((e) => MerklePathItem.fromJson(e))
+                  .toList(),
+      );
+
+  final LightClientBlockLiteView? certifying_block_header_lite;
+  final List<MerklePathItem>? certifying_block_proof;
+  final ChunkExecutionRoots? roots;
+  final List<MerklePathItem>? roots_proof;
+
+  Map<String, dynamic> toJson() => {
+    if (certifying_block_header_lite != null)
+      r'certifying_block_header_lite': certifying_block_header_lite?.toJson(),
+    if (certifying_block_proof != null)
+      r'certifying_block_proof': certifying_block_proof
+          ?.map((e) => e.toJson())
+          .toList(),
+    if (roots != null) r'roots': roots?.toJson(),
+    if (roots_proof != null)
+      r'roots_proof': roots_proof?.map((e) => e.toJson()).toList(),
+  };
+}
+
+/// Union type generated from `ChunkExecutionRoots`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class ChunkExecutionRoots {
+  const ChunkExecutionRoots(this.json);
+  factory ChunkExecutionRoots.fromJson(dynamic json) =>
+      ChunkExecutionRoots(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Generated from `ChunkExecutionRootsV1`.
+class ChunkExecutionRootsV1 {
+  const ChunkExecutionRootsV1({
+    this.chunk_id,
+    this.outcome_root,
+    this.outgoing_receipts_root,
+    this.state_root,
+  });
+
+  factory ChunkExecutionRootsV1.fromJson(Map<String, dynamic> json) =>
+      ChunkExecutionRootsV1(
+        chunk_id: json[r'chunk_id'] == null
+            ? null
+            : SpiceChunkId.fromJson(json[r'chunk_id']),
+        outcome_root: json[r'outcome_root'] == null
+            ? null
+            : json[r'outcome_root'] as CryptoHash,
+        outgoing_receipts_root: json[r'outgoing_receipts_root'] == null
+            ? null
+            : json[r'outgoing_receipts_root'] as CryptoHash,
+        state_root: json[r'state_root'] == null
+            ? null
+            : json[r'state_root'] as CryptoHash,
+      );
+
+  final SpiceChunkId? chunk_id;
+  final CryptoHash? outcome_root;
+  final CryptoHash? outgoing_receipts_root;
+  final CryptoHash? state_root;
+
+  Map<String, dynamic> toJson() => {
+    if (chunk_id != null) r'chunk_id': chunk_id?.toJson(),
+    if (outcome_root != null) r'outcome_root': outcome_root,
+    if (outgoing_receipts_root != null)
+      r'outgoing_receipts_root': outgoing_receipts_root,
+    if (state_root != null) r'state_root': state_root,
+  };
+}
+
 /// Alias for `ChunkHash`.
 typedef ChunkHash = CryptoHash;
 
@@ -1194,6 +1337,7 @@ class ChunkHeaderView {
 class CloudArchivalWriterConfig {
   const CloudArchivalWriterConfig({
     this.archive_block_data,
+    this.catch_up_throttle,
     this.polling_interval,
     this.snapshot_every_n_epochs,
   });
@@ -1203,6 +1347,9 @@ class CloudArchivalWriterConfig {
         archive_block_data: json[r'archive_block_data'] == null
             ? null
             : json[r'archive_block_data'] as bool,
+        catch_up_throttle: json[r'catch_up_throttle'] == null
+            ? null
+            : DurationAsStdSchemaProvider.fromJson(json[r'catch_up_throttle']),
         polling_interval: json[r'polling_interval'] == null
             ? null
             : DurationAsStdSchemaProvider.fromJson(json[r'polling_interval']),
@@ -1212,11 +1359,14 @@ class CloudArchivalWriterConfig {
       );
 
   final bool? archive_block_data;
+  final DurationAsStdSchemaProvider? catch_up_throttle;
   final DurationAsStdSchemaProvider? polling_interval;
   final int? snapshot_every_n_epochs;
 
   Map<String, dynamic> toJson() => {
     if (archive_block_data != null) r'archive_block_data': archive_block_data,
+    if (catch_up_throttle != null)
+      r'catch_up_throttle': catch_up_throttle?.toJson(),
     if (polling_interval != null)
       r'polling_interval': polling_interval?.toJson(),
     if (snapshot_every_n_epochs != null)
@@ -2496,6 +2646,8 @@ class ExtCostsConfigView {
     this.keccak512_byte,
     this.log_base,
     this.log_byte,
+    this.ml_dsa_verify_base,
+    this.ml_dsa_verify_byte,
     this.p256_verify_base,
     this.p256_verify_byte,
     this.promise_and_base,
@@ -2510,6 +2662,12 @@ class ExtCostsConfigView {
     this.ripemd160_block,
     this.sha256_base,
     this.sha256_byte,
+    this.sha3_256_base,
+    this.sha3_256_byte,
+    this.sha3_384_base,
+    this.sha3_384_byte,
+    this.sha3_512_base,
+    this.sha3_512_byte,
     this.storage_has_key_base,
     this.storage_has_key_byte,
     this.storage_iter_create_from_byte,
@@ -2533,6 +2691,8 @@ class ExtCostsConfigView {
     this.storage_write_key_byte,
     this.storage_write_value_byte,
     this.touching_trie_node,
+    this.universal_state_init_to_account_id_base,
+    this.universal_state_init_to_account_id_byte,
     this.utf16_decoding_base,
     this.utf16_decoding_byte,
     this.utf8_decoding_base,
@@ -2667,6 +2827,12 @@ class ExtCostsConfigView {
         : json[r'keccak512_byte'] as NearGas,
     log_base: json[r'log_base'] == null ? null : json[r'log_base'] as NearGas,
     log_byte: json[r'log_byte'] == null ? null : json[r'log_byte'] as NearGas,
+    ml_dsa_verify_base: json[r'ml_dsa_verify_base'] == null
+        ? null
+        : json[r'ml_dsa_verify_base'] as NearGas,
+    ml_dsa_verify_byte: json[r'ml_dsa_verify_byte'] == null
+        ? null
+        : json[r'ml_dsa_verify_byte'] as NearGas,
     p256_verify_base: json[r'p256_verify_base'] == null
         ? null
         : json[r'p256_verify_base'] as NearGas,
@@ -2709,6 +2875,24 @@ class ExtCostsConfigView {
     sha256_byte: json[r'sha256_byte'] == null
         ? null
         : json[r'sha256_byte'] as NearGas,
+    sha3_256_base: json[r'sha3_256_base'] == null
+        ? null
+        : json[r'sha3_256_base'] as NearGas,
+    sha3_256_byte: json[r'sha3_256_byte'] == null
+        ? null
+        : json[r'sha3_256_byte'] as NearGas,
+    sha3_384_base: json[r'sha3_384_base'] == null
+        ? null
+        : json[r'sha3_384_base'] as NearGas,
+    sha3_384_byte: json[r'sha3_384_byte'] == null
+        ? null
+        : json[r'sha3_384_byte'] as NearGas,
+    sha3_512_base: json[r'sha3_512_base'] == null
+        ? null
+        : json[r'sha3_512_base'] as NearGas,
+    sha3_512_byte: json[r'sha3_512_byte'] == null
+        ? null
+        : json[r'sha3_512_byte'] as NearGas,
     storage_has_key_base: json[r'storage_has_key_base'] == null
         ? null
         : json[r'storage_has_key_base'] as NearGas,
@@ -2785,6 +2969,14 @@ class ExtCostsConfigView {
     touching_trie_node: json[r'touching_trie_node'] == null
         ? null
         : json[r'touching_trie_node'] as NearGas,
+    universal_state_init_to_account_id_base:
+        json[r'universal_state_init_to_account_id_base'] == null
+        ? null
+        : json[r'universal_state_init_to_account_id_base'] as NearGas,
+    universal_state_init_to_account_id_byte:
+        json[r'universal_state_init_to_account_id_byte'] == null
+        ? null
+        : json[r'universal_state_init_to_account_id_byte'] as NearGas,
     utf16_decoding_base: json[r'utf16_decoding_base'] == null
         ? null
         : json[r'utf16_decoding_base'] as NearGas,
@@ -2870,6 +3062,8 @@ class ExtCostsConfigView {
   final NearGas? keccak512_byte;
   final NearGas? log_base;
   final NearGas? log_byte;
+  final NearGas? ml_dsa_verify_base;
+  final NearGas? ml_dsa_verify_byte;
   final NearGas? p256_verify_base;
   final NearGas? p256_verify_byte;
   final NearGas? promise_and_base;
@@ -2884,6 +3078,12 @@ class ExtCostsConfigView {
   final NearGas? ripemd160_block;
   final NearGas? sha256_base;
   final NearGas? sha256_byte;
+  final NearGas? sha3_256_base;
+  final NearGas? sha3_256_byte;
+  final NearGas? sha3_384_base;
+  final NearGas? sha3_384_byte;
+  final NearGas? sha3_512_base;
+  final NearGas? sha3_512_byte;
   final NearGas? storage_has_key_base;
   final NearGas? storage_has_key_byte;
   final NearGas? storage_iter_create_from_byte;
@@ -2907,6 +3107,8 @@ class ExtCostsConfigView {
   final NearGas? storage_write_key_byte;
   final NearGas? storage_write_value_byte;
   final NearGas? touching_trie_node;
+  final NearGas? universal_state_init_to_account_id_base;
+  final NearGas? universal_state_init_to_account_id_byte;
   final NearGas? utf16_decoding_base;
   final NearGas? utf16_decoding_byte;
   final NearGas? utf8_decoding_base;
@@ -2992,6 +3194,8 @@ class ExtCostsConfigView {
     if (keccak512_byte != null) r'keccak512_byte': keccak512_byte,
     if (log_base != null) r'log_base': log_base,
     if (log_byte != null) r'log_byte': log_byte,
+    if (ml_dsa_verify_base != null) r'ml_dsa_verify_base': ml_dsa_verify_base,
+    if (ml_dsa_verify_byte != null) r'ml_dsa_verify_byte': ml_dsa_verify_byte,
     if (p256_verify_base != null) r'p256_verify_base': p256_verify_base,
     if (p256_verify_byte != null) r'p256_verify_byte': p256_verify_byte,
     if (promise_and_base != null) r'promise_and_base': promise_and_base,
@@ -3008,6 +3212,12 @@ class ExtCostsConfigView {
     if (ripemd160_block != null) r'ripemd160_block': ripemd160_block,
     if (sha256_base != null) r'sha256_base': sha256_base,
     if (sha256_byte != null) r'sha256_byte': sha256_byte,
+    if (sha3_256_base != null) r'sha3_256_base': sha3_256_base,
+    if (sha3_256_byte != null) r'sha3_256_byte': sha3_256_byte,
+    if (sha3_384_base != null) r'sha3_384_base': sha3_384_base,
+    if (sha3_384_byte != null) r'sha3_384_byte': sha3_384_byte,
+    if (sha3_512_base != null) r'sha3_512_base': sha3_512_base,
+    if (sha3_512_byte != null) r'sha3_512_byte': sha3_512_byte,
     if (storage_has_key_base != null)
       r'storage_has_key_base': storage_has_key_base,
     if (storage_has_key_byte != null)
@@ -3051,6 +3261,12 @@ class ExtCostsConfigView {
     if (storage_write_value_byte != null)
       r'storage_write_value_byte': storage_write_value_byte,
     if (touching_trie_node != null) r'touching_trie_node': touching_trie_node,
+    if (universal_state_init_to_account_id_base != null)
+      r'universal_state_init_to_account_id_base':
+          universal_state_init_to_account_id_base,
+    if (universal_state_init_to_account_id_byte != null)
+      r'universal_state_init_to_account_id_byte':
+          universal_state_init_to_account_id_byte,
     if (utf16_decoding_base != null)
       r'utf16_decoding_base': utf16_decoding_base,
     if (utf16_decoding_byte != null)
@@ -3073,51 +3289,6 @@ class ExtCostsConfigView {
       r'yield_create_with_id_base': yield_create_with_id_base,
     if (yield_resume_base != null) r'yield_resume_base': yield_resume_base,
     if (yield_resume_byte != null) r'yield_resume_byte': yield_resume_byte,
-  };
-}
-
-/// Generated from `ExternalStorageConfig`.
-class ExternalStorageConfig {
-  const ExternalStorageConfig({
-    this.external_storage_fallback_threshold,
-    this.location,
-    this.num_concurrent_requests,
-    this.num_concurrent_requests_during_catchup,
-  });
-
-  factory ExternalStorageConfig.fromJson(Map<String, dynamic> json) =>
-      ExternalStorageConfig(
-        external_storage_fallback_threshold:
-            json[r'external_storage_fallback_threshold'] == null
-            ? null
-            : (json[r'external_storage_fallback_threshold'] as num).toInt(),
-        location: json[r'location'] == null
-            ? null
-            : ExternalStorageLocation.fromJson(json[r'location']),
-        num_concurrent_requests: json[r'num_concurrent_requests'] == null
-            ? null
-            : (json[r'num_concurrent_requests'] as num).toInt(),
-        num_concurrent_requests_during_catchup:
-            json[r'num_concurrent_requests_during_catchup'] == null
-            ? null
-            : (json[r'num_concurrent_requests_during_catchup'] as num).toInt(),
-      );
-
-  final int? external_storage_fallback_threshold;
-  final ExternalStorageLocation? location;
-  final int? num_concurrent_requests;
-  final int? num_concurrent_requests_during_catchup;
-
-  Map<String, dynamic> toJson() => {
-    if (external_storage_fallback_threshold != null)
-      r'external_storage_fallback_threshold':
-          external_storage_fallback_threshold,
-    if (location != null) r'location': location?.toJson(),
-    if (num_concurrent_requests != null)
-      r'num_concurrent_requests': num_concurrent_requests,
-    if (num_concurrent_requests_during_catchup != null)
-      r'num_concurrent_requests_during_catchup':
-          num_concurrent_requests_during_catchup,
   };
 }
 
@@ -4001,6 +4172,72 @@ class JsonRpcRequest_for_EXPERIMENTAL_light_client_block_proof {
   };
 }
 
+/// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof`.
+class JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof {
+  const JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof({
+    this.id,
+    this.jsonrpc,
+    this.method,
+    this.params,
+  });
+
+  factory JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof.fromJson(
+    Map<String, dynamic> json,
+  ) => JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof(
+    id: json[r'id'] == null ? null : json[r'id'] as String,
+    jsonrpc: json[r'jsonrpc'] == null ? null : json[r'jsonrpc'] as String,
+    method: json[r'method'] == null ? null : json[r'method'] as String,
+    params: json[r'params'] == null
+        ? null
+        : RpcLightClientChunkExecutionProofRequest.fromJson(json[r'params']),
+  );
+
+  final String? id;
+  final String? jsonrpc;
+  final String? method;
+  final RpcLightClientChunkExecutionProofRequest? params;
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) r'id': id,
+    if (jsonrpc != null) r'jsonrpc': jsonrpc,
+    if (method != null) r'method': method,
+    if (params != null) r'params': params?.toJson(),
+  };
+}
+
+/// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof`.
+class JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof {
+  const JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof({
+    this.id,
+    this.jsonrpc,
+    this.method,
+    this.params,
+  });
+
+  factory JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof.fromJson(
+    Map<String, dynamic> json,
+  ) => JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof(
+    id: json[r'id'] == null ? null : json[r'id'] as String,
+    jsonrpc: json[r'jsonrpc'] == null ? null : json[r'jsonrpc'] as String,
+    method: json[r'method'] == null ? null : json[r'method'] as String,
+    params: json[r'params'] == null
+        ? null
+        : RpcLightClientExecutionOutcomeProofRequest.fromJson(json[r'params']),
+  );
+
+  final String? id;
+  final String? jsonrpc;
+  final String? method;
+  final RpcLightClientExecutionOutcomeProofRequest? params;
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) r'id': id,
+    if (jsonrpc != null) r'jsonrpc': jsonrpc,
+    if (method != null) r'method': method,
+    if (params != null) r'params': params?.toJson(),
+  };
+}
+
 /// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_proof`.
 class JsonRpcRequest_for_EXPERIMENTAL_light_client_proof {
   const JsonRpcRequest_for_EXPERIMENTAL_light_client_proof({
@@ -4025,6 +4262,39 @@ class JsonRpcRequest_for_EXPERIMENTAL_light_client_proof {
   final String? jsonrpc;
   final String? method;
   final RpcLightClientExecutionProofRequest? params;
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) r'id': id,
+    if (jsonrpc != null) r'jsonrpc': jsonrpc,
+    if (method != null) r'method': method,
+    if (params != null) r'params': params?.toJson(),
+  };
+}
+
+/// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof`.
+class JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof {
+  const JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof({
+    this.id,
+    this.jsonrpc,
+    this.method,
+    this.params,
+  });
+
+  factory JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof.fromJson(
+    Map<String, dynamic> json,
+  ) => JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof(
+    id: json[r'id'] == null ? null : json[r'id'] as String,
+    jsonrpc: json[r'jsonrpc'] == null ? null : json[r'jsonrpc'] as String,
+    method: json[r'method'] == null ? null : json[r'method'] as String,
+    params: json[r'params'] == null
+        ? null
+        : RpcLightClientStateProofRequest.fromJson(json[r'params']),
+  );
+
+  final String? id;
+  final String? jsonrpc;
+  final String? method;
+  final RpcLightClientStateProofRequest? params;
 
   Map<String, dynamic> toJson() => {
     if (id != null) r'id': id,
@@ -5014,6 +5284,38 @@ class JsonRpcRequest_for_tx {
   };
 }
 
+/// Generated from `JsonRpcRequest_for_tx_status`.
+class JsonRpcRequest_for_tx_status {
+  const JsonRpcRequest_for_tx_status({
+    this.id,
+    this.jsonrpc,
+    this.method,
+    this.params,
+  });
+
+  factory JsonRpcRequest_for_tx_status.fromJson(Map<String, dynamic> json) =>
+      JsonRpcRequest_for_tx_status(
+        id: json[r'id'] == null ? null : json[r'id'] as String,
+        jsonrpc: json[r'jsonrpc'] == null ? null : json[r'jsonrpc'] as String,
+        method: json[r'method'] == null ? null : json[r'method'] as String,
+        params: json[r'params'] == null
+            ? null
+            : RpcTransactionStatusRequest.fromJson(json[r'params']),
+      );
+
+  final String? id;
+  final String? jsonrpc;
+  final String? method;
+  final RpcTransactionStatusRequest? params;
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) r'id': id,
+    if (jsonrpc != null) r'jsonrpc': jsonrpc,
+    if (method != null) r'method': method,
+    if (params != null) r'params': params?.toJson(),
+  };
+}
+
 /// Generated from `JsonRpcRequest_for_validators`.
 class JsonRpcRequest_for_validators {
   const JsonRpcRequest_for_validators({
@@ -5228,6 +5530,42 @@ class JsonRpcResponse_for_RpcLightClientBlockProofResponse_and_RpcLightClientPro
   dynamic toJson() => json;
 }
 
+/// Union type generated from `JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError {
+  const JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError(
+    this.json,
+  );
+  factory JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError.fromJson(
+    dynamic json,
+  ) =>
+      JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError(
+        json,
+      );
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Union type generated from `JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError {
+  const JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError(
+    this.json,
+  );
+  factory JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError.fromJson(
+    dynamic json,
+  ) =>
+      JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError(
+        json,
+      );
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
 /// Union type generated from `JsonRpcResponse_for_RpcLightClientExecutionProofResponse_and_RpcLightClientProofError`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -5258,6 +5596,24 @@ class JsonRpcResponse_for_RpcLightClientNextBlockResponse_and_RpcLightClientNext
     dynamic json,
   ) =>
       JsonRpcResponse_for_RpcLightClientNextBlockResponse_and_RpcLightClientNextBlockError(
+        json,
+      );
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Union type generated from `JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError {
+  const JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError(
+    this.json,
+  );
+  factory JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError.fromJson(
+    dynamic json,
+  ) =>
+      JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError(
         json,
       );
   final dynamic json;
@@ -5589,6 +5945,7 @@ class LimitConfig {
     this.max_function_body_size,
     this.max_functions_number_per_contract,
     this.max_gas_burnt,
+    this.max_globals_per_contract,
     this.max_instrumented_code_size,
     this.max_length_method_name,
     this.max_length_returned_data,
@@ -5605,6 +5962,7 @@ class LimitConfig {
     this.max_params_per_function,
     this.max_promises_per_function_call_action,
     this.max_receipt_size,
+    this.max_receipt_total_input_size,
     this.max_register_size,
     this.max_stack_height,
     this.max_tables_per_contract,
@@ -5613,6 +5971,7 @@ class LimitConfig {
     this.max_transaction_size,
     this.max_types_per_contract,
     this.max_yield_payload_size,
+    this.min_contract_size_per_local,
     this.per_receipt_storage_proof_size_limit,
     this.registers_memory_limit,
     this.yield_timeout_length_in_blocks,
@@ -5660,6 +6019,9 @@ class LimitConfig {
     max_gas_burnt: json[r'max_gas_burnt'] == null
         ? null
         : json[r'max_gas_burnt'] as NearGas,
+    max_globals_per_contract: json[r'max_globals_per_contract'] == null
+        ? null
+        : (json[r'max_globals_per_contract'] as num).toInt(),
     max_instrumented_code_size: json[r'max_instrumented_code_size'] == null
         ? null
         : (json[r'max_instrumented_code_size'] as num).toInt(),
@@ -5712,6 +6074,9 @@ class LimitConfig {
     max_receipt_size: json[r'max_receipt_size'] == null
         ? null
         : (json[r'max_receipt_size'] as num).toInt(),
+    max_receipt_total_input_size: json[r'max_receipt_total_input_size'] == null
+        ? null
+        : (json[r'max_receipt_total_input_size'] as num).toInt(),
     max_register_size: json[r'max_register_size'] == null
         ? null
         : (json[r'max_register_size'] as num).toInt(),
@@ -5736,6 +6101,9 @@ class LimitConfig {
     max_yield_payload_size: json[r'max_yield_payload_size'] == null
         ? null
         : (json[r'max_yield_payload_size'] as num).toInt(),
+    min_contract_size_per_local: json[r'min_contract_size_per_local'] == null
+        ? null
+        : (json[r'min_contract_size_per_local'] as num).toInt(),
     per_receipt_storage_proof_size_limit:
         json[r'per_receipt_storage_proof_size_limit'] == null
         ? null
@@ -5761,6 +6129,7 @@ class LimitConfig {
   final int? max_function_body_size;
   final int? max_functions_number_per_contract;
   final NearGas? max_gas_burnt;
+  final int? max_globals_per_contract;
   final int? max_instrumented_code_size;
   final int? max_length_method_name;
   final int? max_length_returned_data;
@@ -5777,6 +6146,7 @@ class LimitConfig {
   final int? max_params_per_function;
   final int? max_promises_per_function_call_action;
   final int? max_receipt_size;
+  final int? max_receipt_total_input_size;
   final int? max_register_size;
   final int? max_stack_height;
   final int? max_tables_per_contract;
@@ -5785,6 +6155,7 @@ class LimitConfig {
   final int? max_transaction_size;
   final int? max_types_per_contract;
   final int? max_yield_payload_size;
+  final int? min_contract_size_per_local;
   final int? per_receipt_storage_proof_size_limit;
   final int? registers_memory_limit;
   final int? yield_timeout_length_in_blocks;
@@ -5812,6 +6183,8 @@ class LimitConfig {
     if (max_functions_number_per_contract != null)
       r'max_functions_number_per_contract': max_functions_number_per_contract,
     if (max_gas_burnt != null) r'max_gas_burnt': max_gas_burnt,
+    if (max_globals_per_contract != null)
+      r'max_globals_per_contract': max_globals_per_contract,
     if (max_instrumented_code_size != null)
       r'max_instrumented_code_size': max_instrumented_code_size,
     if (max_length_method_name != null)
@@ -5843,6 +6216,8 @@ class LimitConfig {
       r'max_promises_per_function_call_action':
           max_promises_per_function_call_action,
     if (max_receipt_size != null) r'max_receipt_size': max_receipt_size,
+    if (max_receipt_total_input_size != null)
+      r'max_receipt_total_input_size': max_receipt_total_input_size,
     if (max_register_size != null) r'max_register_size': max_register_size,
     if (max_stack_height != null) r'max_stack_height': max_stack_height,
     if (max_tables_per_contract != null)
@@ -5857,6 +6232,8 @@ class LimitConfig {
       r'max_types_per_contract': max_types_per_contract,
     if (max_yield_payload_size != null)
       r'max_yield_payload_size': max_yield_payload_size,
+    if (min_contract_size_per_local != null)
+      r'min_contract_size_per_local': min_contract_size_per_local,
     if (per_receipt_storage_proof_size_limit != null)
       r'per_receipt_storage_proof_size_limit':
           per_receipt_storage_proof_size_limit,
@@ -6247,6 +6624,9 @@ class Range_of_uint64 {
   };
 }
 
+/// Alias for `RawStateInit`.
+typedef RawStateInit = String;
+
 /// Union type generated from `ReceiptEnumView`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -6514,6 +6894,7 @@ class RpcClientConfigResponse {
     this.archive,
     this.block_header_fetch_horizon,
     this.block_production_tracking_delay,
+    this.block_request_timeout,
     this.catchup_step_period,
     this.chain_id,
     this.chunk_distribution_network,
@@ -6566,8 +6947,6 @@ class RpcClientConfigResponse {
     this.state_request_throttle_period,
     this.state_requests_per_throttle_period,
     this.state_sync,
-    this.state_sync_external_backoff,
-    this.state_sync_external_timeout,
     this.state_sync_p2p_timeout,
     this.state_sync_retry_backoff,
     this.sync_check_period,
@@ -6582,6 +6961,7 @@ class RpcClientConfigResponse {
     this.ttl_account_id_router,
     this.tx_routing_height_horizon,
     this.version,
+    this.view_access_keys_limit,
     this.view_client_threads,
   });
 
@@ -6596,6 +6976,11 @@ class RpcClientConfigResponse {
         json[r'block_production_tracking_delay'] == null
         ? null
         : json[r'block_production_tracking_delay'] as MutableConfigValue,
+    block_request_timeout: json[r'block_request_timeout'] == null
+        ? null
+        : (json[r'block_request_timeout'] as List)
+              .map<int>((e) => (e as num).toInt())
+              .toList(),
     catchup_step_period: json[r'catchup_step_period'] == null
         ? null
         : (json[r'catchup_step_period'] as List)
@@ -6773,16 +7158,6 @@ class RpcClientConfigResponse {
     state_sync: json[r'state_sync'] == null
         ? null
         : StateSyncConfig.fromJson(json[r'state_sync']),
-    state_sync_external_backoff: json[r'state_sync_external_backoff'] == null
-        ? null
-        : (json[r'state_sync_external_backoff'] as List)
-              .map<int>((e) => (e as num).toInt())
-              .toList(),
-    state_sync_external_timeout: json[r'state_sync_external_timeout'] == null
-        ? null
-        : (json[r'state_sync_external_timeout'] as List)
-              .map<int>((e) => (e as num).toInt())
-              .toList(),
     state_sync_p2p_timeout: json[r'state_sync_p2p_timeout'] == null
         ? null
         : (json[r'state_sync_p2p_timeout'] as List)
@@ -6837,6 +7212,9 @@ class RpcClientConfigResponse {
     version: json[r'version'] == null
         ? null
         : Version.fromJson(json[r'version']),
+    view_access_keys_limit: json[r'view_access_keys_limit'] == null
+        ? null
+        : (json[r'view_access_keys_limit'] as num).toInt(),
     view_client_threads: json[r'view_client_threads'] == null
         ? null
         : (json[r'view_client_threads'] as num).toInt(),
@@ -6845,6 +7223,7 @@ class RpcClientConfigResponse {
   final bool? archive;
   final int? block_header_fetch_horizon;
   final MutableConfigValue? block_production_tracking_delay;
+  final List<int>? block_request_timeout;
   final List<int>? catchup_step_period;
   final String? chain_id;
   final dynamic? chunk_distribution_network;
@@ -6897,8 +7276,6 @@ class RpcClientConfigResponse {
   final List<int>? state_request_throttle_period;
   final int? state_requests_per_throttle_period;
   final StateSyncConfig? state_sync;
-  final List<int>? state_sync_external_backoff;
-  final List<int>? state_sync_external_timeout;
   final List<int>? state_sync_p2p_timeout;
   final List<int>? state_sync_retry_backoff;
   final List<int>? sync_check_period;
@@ -6913,6 +7290,7 @@ class RpcClientConfigResponse {
   final List<int>? ttl_account_id_router;
   final int? tx_routing_height_horizon;
   final Version? version;
+  final int? view_access_keys_limit;
   final int? view_client_threads;
 
   Map<String, dynamic> toJson() => {
@@ -6921,6 +7299,8 @@ class RpcClientConfigResponse {
       r'block_header_fetch_horizon': block_header_fetch_horizon,
     if (block_production_tracking_delay != null)
       r'block_production_tracking_delay': block_production_tracking_delay,
+    if (block_request_timeout != null)
+      r'block_request_timeout': block_request_timeout,
     if (catchup_step_period != null)
       r'catchup_step_period': catchup_step_period,
     if (chain_id != null) r'chain_id': chain_id,
@@ -7012,10 +7392,6 @@ class RpcClientConfigResponse {
     if (state_requests_per_throttle_period != null)
       r'state_requests_per_throttle_period': state_requests_per_throttle_period,
     if (state_sync != null) r'state_sync': state_sync?.toJson(),
-    if (state_sync_external_backoff != null)
-      r'state_sync_external_backoff': state_sync_external_backoff,
-    if (state_sync_external_timeout != null)
-      r'state_sync_external_timeout': state_sync_external_timeout,
     if (state_sync_p2p_timeout != null)
       r'state_sync_p2p_timeout': state_sync_p2p_timeout,
     if (state_sync_retry_backoff != null)
@@ -7043,6 +7419,8 @@ class RpcClientConfigResponse {
     if (tx_routing_height_horizon != null)
       r'tx_routing_height_horizon': tx_routing_height_horizon,
     if (version != null) r'version': version?.toJson(),
+    if (view_access_keys_limit != null)
+      r'view_access_keys_limit': view_access_keys_limit,
     if (view_client_threads != null)
       r'view_client_threads': view_client_threads,
   };
@@ -7212,6 +7590,93 @@ class RpcLightClientBlockProofResponse {
   };
 }
 
+/// Generated from `RpcLightClientChunkExecutionProofRequest`.
+class RpcLightClientChunkExecutionProofRequest {
+  const RpcLightClientChunkExecutionProofRequest({
+    this.chunk_id,
+    this.light_client_head,
+  });
+
+  factory RpcLightClientChunkExecutionProofRequest.fromJson(
+    Map<String, dynamic> json,
+  ) => RpcLightClientChunkExecutionProofRequest(
+    chunk_id: json[r'chunk_id'] == null
+        ? null
+        : SpiceChunkId.fromJson(json[r'chunk_id']),
+    light_client_head: json[r'light_client_head'] == null
+        ? null
+        : json[r'light_client_head'] as CryptoHash,
+  );
+
+  final SpiceChunkId? chunk_id;
+  final CryptoHash? light_client_head;
+
+  Map<String, dynamic> toJson() => {
+    if (chunk_id != null) r'chunk_id': chunk_id?.toJson(),
+    if (light_client_head != null) r'light_client_head': light_client_head,
+  };
+}
+
+/// Generated from `RpcLightClientChunkExecutionProofResponse`.
+class RpcLightClientChunkExecutionProofResponse {
+  const RpcLightClientChunkExecutionProofResponse({this.chunk_execution_proof});
+
+  factory RpcLightClientChunkExecutionProofResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => RpcLightClientChunkExecutionProofResponse(
+    chunk_execution_proof: json[r'chunk_execution_proof'] == null
+        ? null
+        : ChunkExecutionProofView.fromJson(json[r'chunk_execution_proof']),
+  );
+
+  final ChunkExecutionProofView? chunk_execution_proof;
+
+  Map<String, dynamic> toJson() => {
+    if (chunk_execution_proof != null)
+      r'chunk_execution_proof': chunk_execution_proof?.toJson(),
+  };
+}
+
+/// Union type generated from `RpcLightClientExecutionOutcomeProofRequest`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class RpcLightClientExecutionOutcomeProofRequest {
+  const RpcLightClientExecutionOutcomeProofRequest(this.json);
+  factory RpcLightClientExecutionOutcomeProofRequest.fromJson(dynamic json) =>
+      RpcLightClientExecutionOutcomeProofRequest(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Generated from `RpcLightClientExecutionOutcomeProofResponse`.
+class RpcLightClientExecutionOutcomeProofResponse {
+  const RpcLightClientExecutionOutcomeProofResponse({
+    this.chunk_execution_proof,
+    this.outcome_proof,
+  });
+
+  factory RpcLightClientExecutionOutcomeProofResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => RpcLightClientExecutionOutcomeProofResponse(
+    chunk_execution_proof: json[r'chunk_execution_proof'] == null
+        ? null
+        : ChunkExecutionProofView.fromJson(json[r'chunk_execution_proof']),
+    outcome_proof: json[r'outcome_proof'] == null
+        ? null
+        : ExecutionOutcomeWithIdView.fromJson(json[r'outcome_proof']),
+  );
+
+  final ChunkExecutionProofView? chunk_execution_proof;
+  final ExecutionOutcomeWithIdView? outcome_proof;
+
+  Map<String, dynamic> toJson() => {
+    if (chunk_execution_proof != null)
+      r'chunk_execution_proof': chunk_execution_proof?.toJson(),
+    if (outcome_proof != null) r'outcome_proof': outcome_proof?.toJson(),
+  };
+}
+
 /// Union type generated from `RpcLightClientExecutionProofRequest`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -7371,6 +7836,66 @@ class RpcLightClientProofError {
       RpcLightClientProofError(json);
   final dynamic json;
   dynamic toJson() => json;
+}
+
+/// Generated from `RpcLightClientStateProofRequest`.
+class RpcLightClientStateProofRequest {
+  const RpcLightClientStateProofRequest({
+    this.chunk_id,
+    this.light_client_head,
+    this.target,
+  });
+
+  factory RpcLightClientStateProofRequest.fromJson(Map<String, dynamic> json) =>
+      RpcLightClientStateProofRequest(
+        chunk_id: json[r'chunk_id'] == null
+            ? null
+            : SpiceChunkId.fromJson(json[r'chunk_id']),
+        light_client_head: json[r'light_client_head'] == null
+            ? null
+            : json[r'light_client_head'] as CryptoHash,
+        target: json[r'target'] == null
+            ? null
+            : StateProofTarget.fromJson(json[r'target']),
+      );
+
+  final SpiceChunkId? chunk_id;
+  final CryptoHash? light_client_head;
+  final StateProofTarget? target;
+
+  Map<String, dynamic> toJson() => {
+    if (chunk_id != null) r'chunk_id': chunk_id?.toJson(),
+    if (light_client_head != null) r'light_client_head': light_client_head,
+    if (target != null) r'target': target?.toJson(),
+  };
+}
+
+/// Generated from `RpcLightClientStateProofResponse`.
+class RpcLightClientStateProofResponse {
+  const RpcLightClientStateProofResponse({
+    this.chunk_execution_proof,
+    this.state_proof,
+  });
+
+  factory RpcLightClientStateProofResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => RpcLightClientStateProofResponse(
+    chunk_execution_proof: json[r'chunk_execution_proof'] == null
+        ? null
+        : ChunkExecutionProofView.fromJson(json[r'chunk_execution_proof']),
+    state_proof: json[r'state_proof'] == null
+        ? null
+        : StateProofView.fromJson(json[r'state_proof']),
+  );
+
+  final ChunkExecutionProofView? chunk_execution_proof;
+  final StateProofView? state_proof;
+
+  Map<String, dynamic> toJson() => {
+    if (chunk_execution_proof != null)
+      r'chunk_execution_proof': chunk_execution_proof?.toJson(),
+    if (state_proof != null) r'state_proof': state_proof?.toJson(),
+  };
 }
 
 /// Union type generated from `RpcMaintenanceWindowsError`.
@@ -8455,6 +8980,7 @@ class RpcViewAccessKeyListResponse {
     this.block_hash,
     this.block_height,
     this.keys,
+    this.last_key,
   });
 
   factory RpcViewAccessKeyListResponse.fromJson(Map<String, dynamic> json) =>
@@ -8470,16 +8996,19 @@ class RpcViewAccessKeyListResponse {
             : (json[r'keys'] as List)
                   .map<AccessKeyInfoView>((e) => AccessKeyInfoView.fromJson(e))
                   .toList(),
+        last_key: json[r'last_key'] == null ? null : json[r'last_key'],
       );
 
   final CryptoHash? block_hash;
   final int? block_height;
   final List<AccessKeyInfoView>? keys;
+  final dynamic? last_key;
 
   Map<String, dynamic> toJson() => {
     if (block_hash != null) r'block_hash': block_hash,
     if (block_height != null) r'block_height': block_height,
     if (keys != null) r'keys': keys?.map((e) => e.toJson()).toList(),
+    if (last_key != null) r'last_key': last_key,
   };
 }
 
@@ -8561,10 +9090,12 @@ class RpcViewAccountResponse {
     this.amount,
     this.block_hash,
     this.block_height,
+    this.bootstrap_nonce,
     this.code_hash,
     this.global_contract_account_id,
     this.global_contract_hash,
     this.locked,
+    this.state,
     this.storage_paid_at,
     this.storage_usage,
   });
@@ -8578,6 +9109,9 @@ class RpcViewAccountResponse {
         block_height: json[r'block_height'] == null
             ? null
             : (json[r'block_height'] as num).toInt(),
+        bootstrap_nonce: json[r'bootstrap_nonce'] == null
+            ? null
+            : (json[r'bootstrap_nonce'] as num).toInt(),
         code_hash: json[r'code_hash'] == null
             ? null
             : json[r'code_hash'] as CryptoHash,
@@ -8588,6 +9122,9 @@ class RpcViewAccountResponse {
             ? null
             : json[r'global_contract_hash'],
         locked: json[r'locked'] == null ? null : json[r'locked'] as NearToken,
+        state: json[r'state'] == null
+            ? null
+            : AccountState.fromJson(json[r'state']),
         storage_paid_at: json[r'storage_paid_at'] == null
             ? null
             : (json[r'storage_paid_at'] as num).toInt(),
@@ -8599,10 +9136,12 @@ class RpcViewAccountResponse {
   final NearToken? amount;
   final CryptoHash? block_hash;
   final int? block_height;
+  final int? bootstrap_nonce;
   final CryptoHash? code_hash;
   final dynamic? global_contract_account_id;
   final dynamic? global_contract_hash;
   final NearToken? locked;
+  final AccountState? state;
   final int? storage_paid_at;
   final int? storage_usage;
 
@@ -8610,12 +9149,14 @@ class RpcViewAccountResponse {
     if (amount != null) r'amount': amount,
     if (block_hash != null) r'block_hash': block_hash,
     if (block_height != null) r'block_height': block_height,
+    if (bootstrap_nonce != null) r'bootstrap_nonce': bootstrap_nonce,
     if (code_hash != null) r'code_hash': code_hash,
     if (global_contract_account_id != null)
       r'global_contract_account_id': global_contract_account_id,
     if (global_contract_hash != null)
       r'global_contract_hash': global_contract_hash,
     if (locked != null) r'locked': locked,
+    if (state != null) r'state': state?.toJson(),
     if (storage_paid_at != null) r'storage_paid_at': storage_paid_at,
     if (storage_usage != null) r'storage_usage': storage_usage,
   };
@@ -9266,6 +9807,26 @@ class SpiceChunkEndorsementStats {
   };
 }
 
+/// Generated from `SpiceChunkId`.
+class SpiceChunkId {
+  const SpiceChunkId({this.block_hash, this.shard_id});
+
+  factory SpiceChunkId.fromJson(Map<String, dynamic> json) => SpiceChunkId(
+    block_hash: json[r'block_hash'] == null
+        ? null
+        : json[r'block_hash'] as CryptoHash,
+    shard_id: json[r'shard_id'] == null ? null : json[r'shard_id'] as ShardId,
+  );
+
+  final CryptoHash? block_hash;
+  final ShardId? shard_id;
+
+  Map<String, dynamic> toJson() => {
+    if (block_hash != null) r'block_hash': block_hash,
+    if (shard_id != null) r'shard_id': shard_id,
+  };
+}
+
 /// Generated from `StakeAction`.
 class StakeAction {
   const StakeAction({this.public_key, this.stake});
@@ -9336,6 +9897,37 @@ class StateItem {
 
   Map<String, dynamic> toJson() => {
     if (key != null) r'key': key,
+    if (value != null) r'value': value,
+  };
+}
+
+/// Union type generated from `StateProofTarget`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class StateProofTarget {
+  const StateProofTarget(this.json);
+  factory StateProofTarget.fromJson(dynamic json) => StateProofTarget(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Generated from `StateProofView`.
+class StateProofView {
+  const StateProofView({this.nodes, this.value});
+
+  factory StateProofView.fromJson(Map<String, dynamic> json) => StateProofView(
+    nodes: json[r'nodes'] == null
+        ? null
+        : (json[r'nodes'] as List).map<String>((e) => e as String).toList(),
+    value: json[r'value'] == null ? null : json[r'value'],
+  );
+
+  final List<String>? nodes;
+  final dynamic? value;
+
+  Map<String, dynamic> toJson() => {
+    if (nodes != null) r'nodes': nodes,
     if (value != null) r'value': value,
   };
 }
@@ -9584,6 +10176,17 @@ class Tier1ProxyView {
   };
 }
 
+/// Union type generated from `TimeoutErrorCause`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class TimeoutErrorCause {
+  const TimeoutErrorCause(this.json);
+  factory TimeoutErrorCause.fromJson(dynamic json) => TimeoutErrorCause(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
 /// Union type generated from `TrackedShardsConfig`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -9692,6 +10295,29 @@ class TxExecutionStatus {
   dynamic toJson() => json;
 }
 
+/// Generated from `UniversalStateInitAction`.
+class UniversalStateInitAction {
+  const UniversalStateInitAction({this.deposit, this.state_init});
+
+  factory UniversalStateInitAction.fromJson(Map<String, dynamic> json) =>
+      UniversalStateInitAction(
+        deposit: json[r'deposit'] == null
+            ? null
+            : json[r'deposit'] as NearToken,
+        state_init: json[r'state_init'] == null
+            ? null
+            : json[r'state_init'] as RawStateInit,
+      );
+
+  final NearToken? deposit;
+  final RawStateInit? state_init;
+
+  Map<String, dynamic> toJson() => {
+    if (deposit != null) r'deposit': deposit,
+    if (state_init != null) r'state_init': state_init,
+  };
+}
+
 /// Generated from `UseGlobalContractAction`.
 class UseGlobalContractAction {
   const UseGlobalContractAction({this.contract_identifier});
@@ -9718,7 +10344,6 @@ class VMConfigView {
     this.chain_id_host_fn,
     this.discard_custom_sections,
     this.eth_implicit_accounts,
-    this.eth_implicit_global_contract,
     this.ext_costs,
     this.fix_contract_loading_cost,
     this.gas_key_host_fns,
@@ -9728,11 +10353,14 @@ class VMConfigView {
     this.limit_config,
     this.linear_op_base_cost,
     this.linear_op_unit_cost,
+    this.ml_dsa_verify_host_fn,
     this.one_yocto_on_promise,
     this.p256_verify_host_fn,
     this.reftypes_bulk_memory,
     this.regular_op_cost,
+    this.sha3_host_fns,
     this.storage_get_mode,
+    this.universal_accounts,
     this.vm_kind,
     this.yield_with_id_host_fns,
   });
@@ -9750,9 +10378,6 @@ class VMConfigView {
     eth_implicit_accounts: json[r'eth_implicit_accounts'] == null
         ? null
         : json[r'eth_implicit_accounts'] as bool,
-    eth_implicit_global_contract: json[r'eth_implicit_global_contract'] == null
-        ? null
-        : json[r'eth_implicit_global_contract'] as bool,
     ext_costs: json[r'ext_costs'] == null
         ? null
         : ExtCostsConfigView.fromJson(json[r'ext_costs']),
@@ -9780,6 +10405,9 @@ class VMConfigView {
     linear_op_unit_cost: json[r'linear_op_unit_cost'] == null
         ? null
         : (json[r'linear_op_unit_cost'] as num).toInt(),
+    ml_dsa_verify_host_fn: json[r'ml_dsa_verify_host_fn'] == null
+        ? null
+        : json[r'ml_dsa_verify_host_fn'] as bool,
     one_yocto_on_promise: json[r'one_yocto_on_promise'] == null
         ? null
         : json[r'one_yocto_on_promise'] as bool,
@@ -9792,9 +10420,15 @@ class VMConfigView {
     regular_op_cost: json[r'regular_op_cost'] == null
         ? null
         : (json[r'regular_op_cost'] as num).toInt(),
+    sha3_host_fns: json[r'sha3_host_fns'] == null
+        ? null
+        : json[r'sha3_host_fns'] as bool,
     storage_get_mode: json[r'storage_get_mode'] == null
         ? null
         : StorageGetMode.fromJson(json[r'storage_get_mode']),
+    universal_accounts: json[r'universal_accounts'] == null
+        ? null
+        : json[r'universal_accounts'] as bool,
     vm_kind: json[r'vm_kind'] == null
         ? null
         : VMKind.fromJson(json[r'vm_kind']),
@@ -9807,7 +10441,6 @@ class VMConfigView {
   final bool? chain_id_host_fn;
   final bool? discard_custom_sections;
   final bool? eth_implicit_accounts;
-  final bool? eth_implicit_global_contract;
   final ExtCostsConfigView? ext_costs;
   final bool? fix_contract_loading_cost;
   final bool? gas_key_host_fns;
@@ -9817,11 +10450,14 @@ class VMConfigView {
   final LimitConfig? limit_config;
   final int? linear_op_base_cost;
   final int? linear_op_unit_cost;
+  final bool? ml_dsa_verify_host_fn;
   final bool? one_yocto_on_promise;
   final bool? p256_verify_host_fn;
   final bool? reftypes_bulk_memory;
   final int? regular_op_cost;
+  final bool? sha3_host_fns;
   final StorageGetMode? storage_get_mode;
+  final bool? universal_accounts;
   final VMKind? vm_kind;
   final bool? yield_with_id_host_fns;
 
@@ -9833,8 +10469,6 @@ class VMConfigView {
       r'discard_custom_sections': discard_custom_sections,
     if (eth_implicit_accounts != null)
       r'eth_implicit_accounts': eth_implicit_accounts,
-    if (eth_implicit_global_contract != null)
-      r'eth_implicit_global_contract': eth_implicit_global_contract,
     if (ext_costs != null) r'ext_costs': ext_costs?.toJson(),
     if (fix_contract_loading_cost != null)
       r'fix_contract_loading_cost': fix_contract_loading_cost,
@@ -9849,6 +10483,8 @@ class VMConfigView {
       r'linear_op_base_cost': linear_op_base_cost,
     if (linear_op_unit_cost != null)
       r'linear_op_unit_cost': linear_op_unit_cost,
+    if (ml_dsa_verify_host_fn != null)
+      r'ml_dsa_verify_host_fn': ml_dsa_verify_host_fn,
     if (one_yocto_on_promise != null)
       r'one_yocto_on_promise': one_yocto_on_promise,
     if (p256_verify_host_fn != null)
@@ -9856,8 +10492,10 @@ class VMConfigView {
     if (reftypes_bulk_memory != null)
       r'reftypes_bulk_memory': reftypes_bulk_memory,
     if (regular_op_cost != null) r'regular_op_cost': regular_op_cost,
+    if (sha3_host_fns != null) r'sha3_host_fns': sha3_host_fns,
     if (storage_get_mode != null)
       r'storage_get_mode': storage_get_mode?.toJson(),
+    if (universal_accounts != null) r'universal_accounts': universal_accounts,
     if (vm_kind != null) r'vm_kind': vm_kind?.toJson(),
     if (yield_with_id_host_fns != null)
       r'yield_with_id_host_fns': yield_with_id_host_fns,
