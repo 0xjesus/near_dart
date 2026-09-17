@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.26
+// Source: nearcore OpenAPI 1.3.27
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
