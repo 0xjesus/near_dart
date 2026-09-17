@@ -22,6 +22,14 @@ typedef IntearWalletAdapterBuilder =
 /// Creates a HOT adapter with the controller's logger.
 typedef HotWalletAdapterBuilder = HotWalletAdapter Function(NearLogger? logger);
 
+/// Creates a Bitte adapter with the controller's logger.
+typedef BitteWalletAdapterBuilder =
+    BitteWalletAdapter Function(NearLogger? logger);
+
+/// Creates a HERE adapter with the controller's logger.
+typedef HereWalletAdapterBuilder =
+    HereWalletAdapter Function(NearLogger? logger);
+
 /// Supplies the initial wallet callback and subsequent deep links.
 ///
 /// Applications normally use the controller's AppLinks-backed default. A
@@ -73,7 +81,13 @@ class _AppLinksWalletLinkSource implements NearWalletLinkSource {
 ///   deep-link/URL handling. Supported until its announced sunset.
 /// - **Intear** — native app + WebSocket bridge; resolves in place.
 /// - **HOT** — native/Telegram app + HTTP relay; resolves in place
-///   (mainnet only).
+///   (mainnet only). Instant Wallet login (`h4n.app`) lives here.
+/// - **Bitte** — browser redirect; connect returns `account_id` +
+///   `public_key` (no local function-call key). Payments return through
+///   the same callback.
+/// - **HERE** — universal sign links (`my.herewallet.app/call` and
+///   `/sign`). Connect requires the wallet to return `account_id` and
+///   `public_key`; transaction signing does not need a prior login.
 class NearWalletController extends ChangeNotifier {
   NearWalletController({
     required this.network,
@@ -89,7 +103,10 @@ class NearWalletController extends ChangeNotifier {
     @visibleForTesting MyNearWalletAdapterBuilder? myNearWalletAdapterBuilder,
     @visibleForTesting IntearWalletAdapterBuilder? intearWalletAdapterBuilder,
     @visibleForTesting HotWalletAdapterBuilder? hotWalletAdapterBuilder,
+    @visibleForTesting BitteWalletAdapterBuilder? bitteWalletAdapterBuilder,
+    @visibleForTesting HereWalletAdapterBuilder? hereWalletAdapterBuilder,
     @visibleForTesting NearWalletLinkSource? linkSource,
+    @visibleForTesting this.redirectTimeout = const Duration(minutes: 5),
   }) : keyStore =
            keyStore ?? (kIsWeb ? SharedPrefsKeyStore() : SecureKeyStore()),
        client =
@@ -100,6 +117,8 @@ class NearWalletController extends ChangeNotifier {
        _myNearWalletAdapterBuilder = myNearWalletAdapterBuilder,
        _intearWalletAdapterBuilder = intearWalletAdapterBuilder,
        _hotWalletAdapterBuilder = hotWalletAdapterBuilder,
+       _bitteWalletAdapterBuilder = bitteWalletAdapterBuilder,
+       _hereWalletAdapterBuilder = hereWalletAdapterBuilder,
        _linkSource = linkSource {
     this.security = security ?? NearWalletSecurity(this.client);
   }
@@ -139,9 +158,15 @@ class NearWalletController extends ChangeNotifier {
   /// Receives safe structured diagnostics from wallet and RPC operations.
   final NearLogger? logger;
 
+  /// How long Bitte/HERE redirect operations wait for a callback.
+  @visibleForTesting
+  final Duration redirectTimeout;
+
   final MyNearWalletAdapterBuilder? _myNearWalletAdapterBuilder;
   final IntearWalletAdapterBuilder? _intearWalletAdapterBuilder;
   final HotWalletAdapterBuilder? _hotWalletAdapterBuilder;
+  final BitteWalletAdapterBuilder? _bitteWalletAdapterBuilder;
+  final HereWalletAdapterBuilder? _hereWalletAdapterBuilder;
   final NearWalletLinkSource? _linkSource;
   MyNearWalletAdapter? _myNearWalletAdapter;
 
@@ -150,6 +175,10 @@ class NearWalletController extends ChangeNotifier {
   static const _networkPrefsKey = 'near_wallet_connect_network';
   static const _hotAccountPrefsKey = 'near_wallet_connect_hot_account';
   static const _hotPublicKeyPrefsKey = 'near_wallet_connect_hot_public_key';
+  static const _pendingRedirectPrefsKey =
+      'near_wallet_connect_pending_redirect';
+  static const _bitteConnectPending = 'bitte_connect';
+  static const _hereConnectPending = 'here_connect';
 
   WalletAccount? _account;
   NearWalletOption? _walletOption;
@@ -159,6 +188,8 @@ class NearWalletController extends ChangeNotifier {
   bool _disposed = false;
   int _myNearWalletFlowGeneration = 0;
   final Set<Completer<void>> _activeMyNearWalletCallbacks = {};
+  Completer<Uri>? _pendingRedirect;
+  int _redirectGeneration = 0;
 
   /// The connected account, or null.
   WalletAccount? get account => _account;
@@ -185,6 +216,19 @@ class NearWalletController extends ChangeNotifier {
   String get _networkId =>
       network == MyNearWalletNetwork.mainnet ? 'mainnet' : 'testnet';
 
+  NearNetwork get _nearNetwork => network == MyNearWalletNetwork.mainnet
+      ? NearNetwork.mainnet
+      : NearNetwork.testnet;
+
+  String get _callbackBase => kIsWeb
+      ? Uri.base.replace(query: '').removeFragment().toString()
+      : '$callbackScheme://callback';
+
+  bool _isVisibilityWallet(NearWalletOption option) =>
+      option == NearWalletOption.hot ||
+      option == NearWalletOption.bitte ||
+      option == NearWalletOption.here;
+
   Future<bool> _launch(Uri uri) => launchUrl(
     uri,
     webOnlyWindowName: kIsWeb ? '_self' : null,
@@ -200,9 +244,7 @@ class NearWalletController extends ChangeNotifier {
     if (builder != null) {
       return _myNearWalletAdapter = builder(logger);
     }
-    final base = kIsWeb
-        ? Uri.base.replace(query: '').removeFragment().toString()
-        : '$callbackScheme://callback';
+    final base = _callbackBase;
     return _myNearWalletAdapter = MyNearWalletAdapter(
       config: MyNearWalletConfig(
         contractId: contractId,
@@ -239,6 +281,34 @@ class NearWalletController extends ChangeNotifier {
       config: HotWalletConfig(origin: appOrigin ?? '$callbackScheme://app'),
       launchUrl: _launch,
       logger: logger,
+    );
+  }
+
+  BitteWalletAdapter _bitteAdapter() {
+    final builder = _bitteWalletAdapterBuilder;
+    if (builder != null) return builder(logger);
+    final base = _callbackBase;
+    return BitteWalletAdapter(
+      config: BitteWalletConfig(
+        successUrl: kIsWeb ? base : '$base/bitte',
+        failureUrl: kIsWeb ? base : '$base/bitte-failure',
+        network: _nearNetwork,
+      ),
+      launchUrl: _launch,
+    );
+  }
+
+  HereWalletAdapter _hereAdapter() {
+    final builder = _hereWalletAdapterBuilder;
+    if (builder != null) return builder(logger);
+    final base = _callbackBase;
+    return HereWalletAdapter(
+      config: HereWalletConfig(
+        returnUrl: kIsWeb ? base : '$base/here',
+        network: _nearNetwork,
+        origin: appOrigin ?? '$callbackScheme://app',
+      ),
+      launchUrl: _launch,
     );
   }
 
@@ -315,8 +385,8 @@ class NearWalletController extends ChangeNotifier {
       return;
     }
 
-    if (restoredOption == NearWalletOption.hot) {
-      await _restoreHot(prefs, accountId);
+    if (_isVisibilityWallet(restoredOption)) {
+      await _restoreVisibilitySession(prefs, accountId, restoredOption);
       return;
     }
 
@@ -352,14 +422,18 @@ class NearWalletController extends ChangeNotifier {
     SharedPreferences prefs,
     NearWalletOption option,
   ) async {
-    if (option == NearWalletOption.hot) {
+    if (_isVisibilityWallet(option)) {
       final accountId = prefs.getString(_hotAccountPrefsKey);
       final publicKey = prefs.getString(_hotPublicKeyPrefsKey);
       if (accountId == null || publicKey == null) {
         await _clearPersistedSession();
         return false;
       }
-      await _saveSession(option, accountId: accountId, hotPublicKey: publicKey);
+      await _saveSession(
+        option,
+        accountId: accountId,
+        sessionPublicKey: publicKey,
+      );
       return true;
     }
 
@@ -373,7 +447,11 @@ class NearWalletController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> _restoreHot(SharedPreferences prefs, String accountId) async {
+  Future<void> _restoreVisibilitySession(
+    SharedPreferences prefs,
+    String accountId,
+    NearWalletOption option,
+  ) async {
     final publicKey = prefs.getString(_hotPublicKeyPrefsKey);
     final legacyAccountId = prefs.getString(_hotAccountPrefsKey);
     if (publicKey == null ||
@@ -400,7 +478,7 @@ class NearWalletController extends ChangeNotifier {
     )) {
       return;
     }
-    _publishRestoredAccount(account, NearWalletOption.hot);
+    _publishRestoredAccount(account, option);
   }
 
   Future<bool> _verifyRestoredAccount(
@@ -441,21 +519,39 @@ class NearWalletController extends ChangeNotifier {
     _set(clearException: true);
   }
 
-  static bool _looksLikeCallback(Uri uri) =>
-      uri.queryParameters.containsKey('account_id') ||
-      uri.queryParameters.containsKey('errorCode');
+  static bool _looksLikeCallback(Uri uri) {
+    final params = {
+      ...uri.queryParameters,
+      if (uri.fragment.isNotEmpty) ...Uri.splitQueryString(uri.fragment),
+    };
+    bool has(String key) {
+      final value = params[key];
+      return value != null && value.isNotEmpty;
+    }
+
+    return has('account_id') ||
+        has('public_key') ||
+        has('errorCode') ||
+        has('error') ||
+        has('transactionHashes') ||
+        has('success') ||
+        has('failure');
+  }
 
   // ── connect / disconnect ─────────────────────────────────────────────────
 
   /// Starts the connect flow with the chosen [wallet].
   ///
-  /// MyNearWallet redirects to the browser (the result arrives via [init]);
-  /// Intear and HOT open their native apps and resolve in place.
-  /// Selecting Intear or HOT invalidates any pending MyNearWallet sign-in
-  /// before opening the new wallet. A failed selection preserves the active
-  /// account session, but the cancelled browser flow must be restarted.
+  /// MyNearWallet and Bitte redirect to the browser (the result arrives via
+  /// [init] on web, or the in-flight completer on mobile). Intear and HOT
+  /// open their native apps and resolve in place. HERE opens a universal
+  /// sign link and completes when the wallet returns `account_id` and
+  /// `public_key`. Selecting another wallet invalidates any pending
+  /// MyNearWallet sign-in before opening the new wallet. A failed selection
+  /// preserves the active account session, but the cancelled browser flow
+  /// must be restarted.
   Future<void> connect({
-    NearWalletOption wallet = NearWalletOption.myNearWallet,
+    NearWalletOption wallet = NearWalletOption.intear,
   }) async {
     if (!availableWallets.contains(wallet)) {
       _setException(
@@ -472,6 +568,7 @@ class NearWalletController extends ChangeNotifier {
       if (wallet != NearWalletOption.myNearWallet) {
         await _cancelPendingMyNearWalletSignIn();
       }
+      _cancelPendingRedirect();
       switch (wallet) {
         case NearWalletOption.myNearWallet:
           await _mnwAdapter().signIn(
@@ -494,23 +591,14 @@ class NearWalletController extends ChangeNotifier {
           _logConnected(wallet);
         case NearWalletOption.hot:
           final account = await _hotAdapter().signIn();
-          await _verifyNewAccount(
-            account,
-            requireFunctionCallScope: false,
-            removeStoredKeyOnFailure: false,
-            clearPersistedSessionOnFailure: false,
-          );
-          await _saveSession(
-            wallet,
-            accountId: account.accountId.value,
-            hotPublicKey: account.publicKey.value,
-          );
-          _account = account;
-          _walletOption = wallet;
-          _set(busy: false);
-          _logConnected(wallet);
+          await _finishVisibilityConnect(wallet, account);
+        case NearWalletOption.bitte:
+          await _connectBitte();
+        case NearWalletOption.here:
+          await _connectHere();
       }
     } catch (error) {
+      _cancelPendingRedirect();
       _setException(_normalizeControllerError(error), busy: false);
     }
   }
@@ -518,20 +606,77 @@ class NearWalletController extends ChangeNotifier {
   Future<void> _saveSession(
     NearWalletOption option, {
     required String accountId,
+    String? sessionPublicKey,
     String? hotPublicKey,
   }) async {
+    final publicKey = sessionPublicKey ?? hotPublicKey;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_optionPrefsKey);
     await prefs.setString(_accountPrefsKey, accountId);
     await prefs.setString(_networkPrefsKey, _networkId);
-    if (option == NearWalletOption.hot && hotPublicKey != null) {
+    if (_isVisibilityWallet(option) && publicKey != null) {
       await prefs.setString(_hotAccountPrefsKey, accountId);
-      await prefs.setString(_hotPublicKeyPrefsKey, hotPublicKey);
+      await prefs.setString(_hotPublicKeyPrefsKey, publicKey);
     } else {
       await prefs.remove(_hotAccountPrefsKey);
       await prefs.remove(_hotPublicKeyPrefsKey);
     }
     await prefs.setString(_optionPrefsKey, option.name);
+  }
+
+  Future<void> _finishVisibilityConnect(
+    NearWalletOption wallet,
+    WalletAccount account,
+  ) async {
+    await _verifyNewAccount(
+      account,
+      requireFunctionCallScope: false,
+      removeStoredKeyOnFailure: false,
+      clearPersistedSessionOnFailure: false,
+    );
+    await _saveSession(
+      wallet,
+      accountId: account.accountId.value,
+      sessionPublicKey: account.publicKey.value,
+    );
+    _account = account;
+    _walletOption = wallet;
+    _set(busy: false);
+    _logConnected(wallet);
+  }
+
+  Future<void> _connectBitte() async {
+    await _persistPendingRedirect(_bitteConnectPending);
+    if (kIsWeb) {
+      await _bitteAdapter().signIn();
+      return;
+    }
+    try {
+      final uri = await _launchAndAwaitRedirect(_bitteAdapter().signIn);
+      await _finishVisibilityConnect(
+        NearWalletOption.bitte,
+        _bitteAdapter().completeConnect(uri),
+      );
+    } finally {
+      await _clearPendingRedirect();
+    }
+  }
+
+  Future<void> _connectHere() async {
+    await _persistPendingRedirect(_hereConnectPending);
+    if (kIsWeb) {
+      await _hereAdapter().signIn();
+      return;
+    }
+    try {
+      final uri = await _launchAndAwaitRedirect(_hereAdapter().signIn);
+      await _finishVisibilityConnect(
+        NearWalletOption.here,
+        _hereAdapter().completeConnect(uri),
+      );
+    } finally {
+      await _clearPendingRedirect();
+    }
   }
 
   Future<void> _verifyNewAccount(
@@ -561,6 +706,40 @@ class NearWalletController extends ChangeNotifier {
 
   Future<void> _handleCallback(Uri uri) async {
     if (_disposed) return;
+    final pendingRedirect = _pendingRedirect;
+    if (pendingRedirect != null) {
+      if (!pendingRedirect.isCompleted) pendingRedirect.complete(uri);
+      return;
+    }
+    final pendingKind = await _readPendingRedirect();
+    if (pendingKind == _bitteConnectPending) {
+      try {
+        _set(busy: true, clearException: true);
+        await _finishVisibilityConnect(
+          NearWalletOption.bitte,
+          _bitteAdapter().completeConnect(uri),
+        );
+        await _clearPendingRedirect();
+      } catch (error) {
+        await _clearPendingRedirect();
+        _setException(_normalizeControllerError(error), busy: false);
+      }
+      return;
+    }
+    if (pendingKind == _hereConnectPending) {
+      try {
+        _set(busy: true, clearException: true);
+        await _finishVisibilityConnect(
+          NearWalletOption.here,
+          _hereAdapter().completeConnect(uri),
+        );
+        await _clearPendingRedirect();
+      } catch (error) {
+        await _clearPendingRedirect();
+        _setException(_normalizeControllerError(error), busy: false);
+      }
+      return;
+    }
     final operation = Completer<void>();
     _activeMyNearWalletCallbacks.add(operation);
     final generation = _myNearWalletFlowGeneration;
@@ -684,7 +863,7 @@ class NearWalletController extends ChangeNotifier {
     await _saveSession(
       option,
       accountId: account.accountId.value,
-      hotPublicKey: option == NearWalletOption.hot
+      sessionPublicKey: _isVisibilityWallet(option)
           ? account.publicKey.value
           : null,
     );
@@ -693,8 +872,11 @@ class NearWalletController extends ChangeNotifier {
   /// Disconnects and clears the stored session.
   Future<void> disconnect() async {
     await _cancelPendingMyNearWalletSignIn();
+    _cancelPendingRedirect();
+    await _clearPendingRedirect();
     final account = _account;
-    if (account != null && _walletOption != NearWalletOption.hot) {
+    final option = _walletOption;
+    if (account != null && option != null && !_isVisibilityWallet(option)) {
       await keyStore.removeKey(account.accountId);
     }
     await _clearPersistedSession();
@@ -721,6 +903,7 @@ class NearWalletController extends ChangeNotifier {
     await prefs.remove(_networkPrefsKey);
     await prefs.remove(_hotAccountPrefsKey);
     await prefs.remove(_hotPublicKeyPrefsKey);
+    await prefs.remove(_pendingRedirectPrefsKey);
   }
 
   // ── the unified API ──────────────────────────────────────────────────────
@@ -756,13 +939,30 @@ class NearWalletController extends ChangeNotifier {
           );
         case NearWalletOption.hot:
           return await _hotAdapter().signMessage(payload: payload);
-        default:
+        case NearWalletOption.myNearWallet:
           throw const NearSdkException(
             code: NearErrorCode.unsupportedOperation,
             message:
                 'MyNearWallet signs messages via browser redirect; use '
                 'MyNearWalletAdapter.buildSignMessageUrl for that flow.',
           );
+        case NearWalletOption.bitte:
+          throw const NearSdkException(
+            code: NearErrorCode.unsupportedOperation,
+            message:
+                'Bitte Wallet does not document a NEP-413 sign-message '
+                'redirect. Use sendTransactions for on-chain approvals.',
+          );
+        case NearWalletOption.here:
+          throw const NearSdkException(
+            code: NearErrorCode.unsupportedOperation,
+            message:
+                'HERE universal `/sign` links are not NEP-413. Use HOT '
+                'Wallet for Instant Wallet NEP-413, or HereWalletAdapter '
+                'directly for the custom sign payload.',
+          );
+        case null:
+          throw _notConnectedException;
       }
     } catch (error, stackTrace) {
       final exception = _normalizeControllerError(error);
@@ -794,7 +994,11 @@ class NearWalletController extends ChangeNotifier {
           outcomes = await _hotAdapter().signAndSendTransactions(
             transactions: transactions,
           );
-        default:
+        case NearWalletOption.bitte:
+          outcomes = await _sendBitteTransactions(transactions);
+        case NearWalletOption.here:
+          outcomes = await _sendHereTransactions(transactions);
+        case NearWalletOption.myNearWallet:
           throw const NearSdkException(
             code: NearErrorCode.unsupportedOperation,
             message:
@@ -802,6 +1006,8 @@ class NearWalletController extends ChangeNotifier {
                 'MyNearWalletAdapter.buildTransactionUrl for that flow, or '
                 'signer() for gas-only calls with the function-call key.',
           );
+        case null:
+          throw _notConnectedException;
       }
 
       emitNearLog(
@@ -896,6 +1102,100 @@ class NearWalletController extends ChangeNotifier {
     );
   }
 
+  Future<List<dynamic>> _sendBitteTransactions(
+    List<Map<String, dynamic>> transactions,
+  ) async {
+    if (kIsWeb) {
+      throw const NearSdkException(
+        code: NearErrorCode.unsupportedOperation,
+        message:
+            'Bitte sendTransactions needs the inbound callback on the same '
+            'isolate. On web, use BitteWalletAdapter directly.',
+      );
+    }
+    final uri = await _launchAndAwaitRedirect(
+      () => _bitteAdapter().requestSignTransactions(transactions),
+    );
+    return _hashesToOutcomes(_bitteAdapter().completeSignTransactions(uri));
+  }
+
+  Future<List<dynamic>> _sendHereTransactions(
+    List<Map<String, dynamic>> transactions,
+  ) async {
+    if (kIsWeb) {
+      throw const NearSdkException(
+        code: NearErrorCode.unsupportedOperation,
+        message:
+            'HERE sendTransactions needs the inbound callback on the same '
+            'isolate. On web, use HereWalletAdapter directly.',
+      );
+    }
+    final uri = await _launchAndAwaitRedirect(
+      () => _hereAdapter().requestSignTransactions(transactions),
+    );
+    return _hashesToOutcomes(_hereAdapter().completeSignTransactions(uri));
+  }
+
+  List<Map<String, String>> _hashesToOutcomes(List<String> hashes) => [
+    for (final hash in hashes) {'transactionHash': hash},
+  ];
+
+  Future<Uri> _launchAndAwaitRedirect(Future<void> Function() launch) async {
+    final generation = ++_redirectGeneration;
+    final pending = Completer<Uri>();
+    _pendingRedirect = pending;
+    try {
+      await launch();
+      if (_disposed || generation != _redirectGeneration) {
+        throw const NearSdkException(
+          code: NearErrorCode.cancelled,
+          message: 'The wallet operation was cancelled.',
+        );
+      }
+      return await pending.future.timeout(redirectTimeout);
+    } on TimeoutException {
+      throw const NearSdkException(
+        code: NearErrorCode.rpcTimeout,
+        message: 'The wallet callback timed out.',
+        retryable: true,
+      );
+    } finally {
+      if (generation == _redirectGeneration &&
+          identical(_pendingRedirect, pending)) {
+        _pendingRedirect = null;
+      }
+    }
+  }
+
+  void _cancelPendingRedirect() {
+    _redirectGeneration++;
+    final pending = _pendingRedirect;
+    _pendingRedirect = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.completeError(
+        const NearSdkException(
+          code: NearErrorCode.cancelled,
+          message: 'The wallet operation was cancelled.',
+        ),
+      );
+    }
+  }
+
+  Future<void> _persistPendingRedirect(String kind) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingRedirectPrefsKey, kind);
+  }
+
+  Future<void> _clearPendingRedirect() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingRedirectPrefsKey);
+  }
+
+  Future<String?> _readPendingRedirect() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_pendingRedirectPrefsKey);
+  }
+
   void _logConnected(NearWalletOption wallet) {
     if (_disposed) return;
     emitNearLog(
@@ -927,6 +1227,7 @@ class NearWalletController extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _myNearWalletFlowGeneration++;
+    _cancelPendingRedirect();
     _linkSub?.cancel();
     _linkSub = null;
     _myNearWalletAdapter?.dispose();

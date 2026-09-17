@@ -84,7 +84,8 @@ retrying a transaction submission, query known transaction hashes or account
 state so an uncertain response does not cause a duplicate action.
 
 Intear's bridge and HOT's relay can delay or drop messages. A timeout does not
-prove that the wallet or chain did nothing.
+prove that the wallet or chain did nothing. Bitte and HERE wait up to five
+minutes for the inbound callback; a timeout is `rpcTimeout`.
 
 ## Access key missing or mismatched
 
@@ -151,6 +152,15 @@ in the release manifest.
 Check `CFBundleURLTypes`, the configured callback route, and initialization
 order. The pending key and correlation value must survive until
 `controller.init()` processes the link.
+
+## Bitte or HERE connect returned without an account
+
+Bitte must return `account_id` and `public_key`. HERE universal links only
+create a controller session when those fields (or JSON containing them) are
+on the callback. A signature- or hash-only HERE callback is
+`walletResponseInvalid`. HERE Instant Wallet login is HOT Wallet.
+
+Meteor, Nightly, and Sender have no Flutter deep-link protocol.
 
 ## HOT session disappeared after upgrade
 

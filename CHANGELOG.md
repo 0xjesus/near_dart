@@ -1,4 +1,6 @@
-## Unreleased
+## 0.6.0
+
+Released 2026-09-17.
 
 ### Security
 
@@ -13,6 +15,14 @@
 
 ### Features
 
+- Add `BitteWalletAdapter` for Bitte `/connect` and `/sign-transaction`
+  redirects (testnet + mainnet). Connect returns `account_id` + `public_key`
+  and does not provision a local function-call key.
+- Add `HereWalletAdapter` for HERE universal sign links
+  (`my.herewallet.app/call/{b58}` and `/sign/{b58}`). HERE Instant Wallet
+  (`h4n.app`) remains `HotWalletAdapter`.
+- Keep Intear's IO WebSocket alive with protocol pings every 20s so Android
+  is less likely to drop the bridge while the wallet is in the foreground.
 - Add structured, redacted `NearLogger` lifecycle events across RPC, Intents,
   and wallet adapters.
 - Add stable `NearErrorCode`, `NearSdkException`, `nearErrorFrom`, and typed RPC

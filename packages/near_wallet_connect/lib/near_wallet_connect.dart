@@ -1,9 +1,9 @@
 /// Drop-in NEAR wallet connection for Flutter.
 ///
 /// Add the package, create a [NearWalletController], call `init()` once, and
-/// drop a [NearConnectButton] in your UI. Connecting provisions a
-/// function-call key so you then sign contract calls locally via
-/// `controller.signer()` — no more redirects.
+/// drop a [NearConnectButton] in your UI. MyNearWallet and Intear can
+/// provision a function-call key for local `controller.signer()` calls.
+/// HOT, Bitte, and HERE keep signing in the wallet.
 ///
 /// Re-exports the relevant `near_dart` types (AccountId, NearToken, Account,
 /// MyNearWalletNetwork, …) so apps need a single import.
@@ -17,6 +17,7 @@ export 'package:near_dart/near_dart.dart'
         KeyStore,
         WalletAccount,
         MyNearWalletNetwork,
+        NearNetwork,
         NearRpcClient,
         TxExecutionStatus,
         NearErrorCode,
@@ -32,7 +33,11 @@ export 'package:near_dart/near_dart.dart'
         IntearWalletAdapter,
         IntearWalletConfig,
         HotWalletAdapter,
-        HotWalletConfig;
+        HotWalletConfig,
+        BitteWalletAdapter,
+        BitteWalletConfig,
+        HereWalletAdapter,
+        HereWalletConfig;
 
 export 'src/near_connect_button.dart';
 export 'src/near_wallet_controller.dart';

@@ -39,6 +39,8 @@ A type-safe, platform-agnostic SDK for building NEAR Protocol applications with 
 | MyNearWallet redirect | ✅ | ✅ | ✅ | ⚠️ untested | ⚠️ untested | ⚠️ untested |
 | Intear Wallet (bridge + deep link) | ✅ | ✅ | ⚠️ needs the native app | ⚠️ untested | ⚠️ untested | ⚠️ untested |
 | HOT Wallet (relay) | ✅ mainnet only | ✅ mainnet only | ✅ mainnet only | ⚠️ untested | ⚠️ untested | ⚠️ untested |
+| Bitte Wallet (redirect) | ⚠️ untested | ⚠️ untested | ⚠️ connect via `init()` | ⚠️ untested | ⚠️ untested | ⚠️ untested |
+| HERE Wallet (universal links) | ⚠️ untested | ⚠️ untested | ⚠️ connect via `init()` | ⚠️ untested | ⚠️ untested | ⚠️ untested |
 | Secure key storage | ✅ Keystore | ✅ Keychain | ⚠️ plain storage (no OS secrets on web) | ✅ Keychain | ✅ DPAPI | ✅ libsecret |
 
 Rows marked *untested* should work (pure Dart + url_launcher) but have no
@@ -64,7 +66,7 @@ Reference app evidence:
 
 ```yaml
 dependencies:
-  near_dart: ^0.5.0
+  near_dart: ^0.6.0
 ```
 
 ## Quick Start

@@ -1,4 +1,6 @@
-## Unreleased
+## 0.5.0
+
+Released 2026-09-17. Requires `near_dart ^0.6.0`.
 
 ### Security
 
@@ -13,6 +15,12 @@
 
 ### Features
 
+- Add Bitte and HERE to `NearWalletOption` and `NearWalletController`.
+  Bitte/HERE sessions are visibility-only (account + public key, no local
+  `signer()`). `sendTransactions` waits for the inbound redirect on
+  mobile/desktop; web connect completes in `init()`.
+- List Intear first in the wallet picker. `connect()` without an explicit
+  wallet now starts Intear instead of MyNearWallet (sunset 31 Oct 2026).
 - Add `NearWalletSecurityPolicy` and injectable `NearWalletSecurity`.
 - Add structured `NearLogger` propagation and typed
   `NearWalletController.lastException`; the existing `controller.error`
@@ -46,6 +54,8 @@
 - Legacy MyNearWallet/Intear option-only sessions migrate when exactly one local
   key exists. Ambiguous multi-key session metadata is cleared while the keys are
   retained for an explicit reconnect.
+- Callers of `connect()` with no `wallet:` argument now open Intear. Pass
+  `NearWalletOption.myNearWallet` to keep the previous default.
 
 ## 0.4.0
 

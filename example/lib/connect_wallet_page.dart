@@ -59,6 +59,10 @@ Future<WalletAccount?> handleWalletCallback(Uri uri) {
   ).completeSignIn(uri);
 }
 
+/// Low-level MyNearWallet redirect demo. New apps should use
+/// `NearConnectButton` from `near_wallet_connect` (Intear is the default;
+/// MyNearWallet sunsets 31 Oct 2026).
+///
 /// Demonstrates the real MyNearWallet connect flow (no embedded WebView):
 ///
 /// 1. `signIn` generates a function-call key and redirects to MNW `/login`.
