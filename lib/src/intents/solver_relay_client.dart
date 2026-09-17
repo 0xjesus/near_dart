@@ -141,11 +141,9 @@ class SolverRelayClient {
   /// Publishes a signed user intent for execution.
   Future<SolverRelayPublishIntentResponse> publishIntent(
     SolverRelayPublishIntentRequest request,
-  ) => _rpc(
-    'publish_intent',
-    [request.toJson()],
-    (result) => SolverRelayPublishIntentResponse.fromJson(_asObject(result)),
-  );
+  ) => _rpc('publish_intent', [
+    request.toJson(),
+  ], (result) => SolverRelayPublishIntentResponse.fromJson(_asObject(result)));
 
   /// Checks execution status for a published intent.
   Future<SolverRelayIntentStatus> getStatus(String intentHash) =>

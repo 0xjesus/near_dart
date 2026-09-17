@@ -76,39 +76,35 @@ Future<AccessKeyView> _waitForAccessKey({
 void main() {
   const faucetUrl = 'https://helper.testnet.near.org/account';
 
-  test(
-    'bounds each access-key RPC poll by the remaining deadline',
-    () async {
-      final keyPair = await KeyPairEd25519.fromSeed(List<int>.filled(32, 7));
-      final client = NearRpcClient(
-        rpcUrl: 'https://rpc.example.com',
-        timeout: const Duration(seconds: 30),
-        httpClient: _NeverCompletingClient(),
+  test('bounds each access-key RPC poll by the remaining deadline', () async {
+    final keyPair = await KeyPairEd25519.fromSeed(List<int>.filled(32, 7));
+    final client = NearRpcClient(
+      rpcUrl: 'https://rpc.example.com',
+      timeout: const Duration(seconds: 30),
+      httpClient: _NeverCompletingClient(),
+    );
+    addTearDown(client.close);
+    final elapsed = Stopwatch()..start();
+    Object? failure;
+
+    try {
+      await _waitForAccessKey(
+        client: client,
+        accountId: AccountId('deadline.testnet'),
+        publicKey: keyPair.publicKey,
+        timeout: const Duration(milliseconds: 50),
+        pollInterval: const Duration(milliseconds: 1),
       );
-      addTearDown(client.close);
-      final elapsed = Stopwatch()..start();
-      Object? failure;
+    } catch (error) {
+      failure = error;
+    }
 
-      try {
-        await _waitForAccessKey(
-          client: client,
-          accountId: AccountId('deadline.testnet'),
-          publicKey: keyPair.publicKey,
-          timeout: const Duration(milliseconds: 50),
-          pollInterval: const Duration(milliseconds: 1),
-        );
-      } catch (error) {
-        failure = error;
-      }
-
-      expect(failure, isNotNull);
-      expect(failure.toString(), contains('account=deadline.testnet'));
-      expect(failure.toString(), contains(keyPair.publicKey.value));
-      expect(failure.toString(), isNot(contains('rpc.example.com')));
-      expect(elapsed.elapsed, lessThan(const Duration(milliseconds: 500)));
-    },
-    timeout: const Timeout(Duration(seconds: 1)),
-  );
+    expect(failure, isNotNull);
+    expect(failure.toString(), contains('account=deadline.testnet'));
+    expect(failure.toString(), contains(keyPair.publicKey.value));
+    expect(failure.toString(), isNot(contains('rpc.example.com')));
+    expect(elapsed.elapsed, lessThan(const Duration(milliseconds: 500)));
+  }, timeout: const Timeout(Duration(seconds: 1)));
 
   test('signs, sends and executes a real transfer on testnet', () async {
     final client = NearRpcClient.testnet();

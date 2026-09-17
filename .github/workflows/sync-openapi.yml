@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     defaults:
       run:
         working-directory: packages/near_jsonrpc_client
@@ -37,10 +38,14 @@ jobs:
           dart run tool/generate.dart
           dart format lib/src/models.g.dart lib/src/client.g.dart
 
-      - name: Verify the regenerated client still analyzes & builds
+      - name: Verify the regenerated client still analyzes
         run: dart analyze
 
+      # GITHUB_TOKEN pushes/PRs do not start the Tests workflow (they sit in
+      # action_required with zero jobs). Analyze here, then squash-merge so
+      # the generated client actually lands on main, and dispatch Tests.
       - name: Open a PR if the generated client changed
+        id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           commit-message: 'chore: sync NEAR JSON-RPC client with upstream OpenAPI spec'
@@ -53,10 +58,27 @@ jobs:
             - Re-ran `dart run tool/generate.dart`
             - `dart analyze` passed
 
-            Review the diff in `lib/src/*.g.dart` and `tool/openapi.json`.
+            Merged automatically after in-workflow analyze. Tests on `main`
+            are dispatched after merge because GITHUB_TOKEN events do not
+            trigger other workflows.
           branch: chore/sync-openapi
           delete-branch: true
           add-paths: |
             packages/near_jsonrpc_client/tool/openapi.json
             packages/near_jsonrpc_client/lib/src/models.g.dart
             packages/near_jsonrpc_client/lib/src/client.g.dart
+
+      - name: Merge generated-client PR onto main
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: .
+        run: |
+          gh pr merge "${{ steps.cpr.outputs.pull-request-number }}" --squash --delete-branch
+
+      - name: Dispatch Tests on main
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: .
+        run: gh workflow run Tests --ref main
