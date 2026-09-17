@@ -1,3 +1,8 @@
+## 0.1.1
+
+- Sync the generated client with the current nearcore OpenAPI spec.
+- Add a package example and point the homepage at the GitHub repository.
+
 ## 0.1.0
 
 Initial release.

@@ -3,10 +3,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **One button. Every NEAR wallet.** Drop-in wallet connection for Flutter —
-`NearConnectButton` opens a wallet picker (**MyNearWallet, Intear, HOT**), and
-one controller handles wallet selection, connection, and session state. Signing
-capabilities remain wallet-specific, as described below. Built on
-[`near_dart`](https://pub.dev/packages/near_dart).
+`NearConnectButton` opens a wallet picker (**Intear, HOT, Bitte, HERE,
+MyNearWallet**), and one controller handles wallet selection, connection, and
+session state. Signing capabilities remain wallet-specific, as described
+below. Built on [`near_dart`](https://pub.dev/packages/near_dart).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/0xjesus/near_dart/main/docs/demo/glass-android.gif" alt="NEAR Flutter demo on Android" width="240"/>
@@ -16,7 +16,7 @@ capabilities remain wallet-specific, as described below. Built on
 
 ```yaml
 dependencies:
-  near_wallet_connect: ^0.4.0
+  near_wallet_connect: ^0.5.0
 ```
 
 ## Use it
@@ -37,9 +37,10 @@ NearConnectButton(controller: wallet);
 ```
 
 Connected. `signer()` is available for MyNearWallet and Intear sessions that
-provision a function-call key. The controller's `signMessage` and
-`sendTransactions` methods are available for **Intear and HOT only**; they
-return `NearErrorCode.unsupportedOperation` when MyNearWallet is selected.
+provision a function-call key. The controller's `signMessage` is NEP-413 for
+**Intear and HOT**. `sendTransactions` is available for **Intear, HOT, Bitte,
+and HERE**. MyNearWallet message/transaction signing stays on the secure
+adapter redirect APIs.
 
 ```dart
 // MyNearWallet or Intear: gas-only calls signed with a function-call key.
@@ -57,7 +58,7 @@ final signed = await wallet.signMessage(Nep413Payload(
   nonce: generateNep413Nonce(),
 ));
 
-// Intear or HOT: payments and deposits approved in the user's wallet.
+// Intear, HOT, Bitte, or HERE: payments and deposits approved in the wallet.
 await wallet.sendTransactions([
   {
     'receiverId': 'app.testnet',
@@ -241,15 +242,23 @@ Reusable pieces:
 | **MyNearWallet** | testnet + mainnet | browser redirect | yes | secure adapter redirect² | secure adapter redirect² |
 | **Intear** | testnet + mainnet | native app + WebSocket bridge¹ | yes | controller | controller |
 | **HOT** | mainnet | native/Telegram app + relay¹ | no | controller | controller |
+| **Bitte** | testnet + mainnet | browser redirect | no | unsupported | controller³ |
+| **HERE** | testnet + mainnet | universal sign link | no | not NEP-413 | controller³ |
 
 ¹ Resolves in place — no inbound deep link needed.
 ² Use `signMessage` / `completeSignMessage` and
 `signAndSendTransaction(s)` / `handleTransactionCallback`. URL-only builders
 do not open the pending correlated flow required by the secure completion APIs.
+³ Mobile/desktop: the controller waits for the inbound callback. Web full-page
+navigation cannot return hashes to the same isolate; use the adapter
+directly. HERE Instant Wallet login (`h4n.app`) is HOT Wallet. HERE
+universal links require `account_id` + `public_key` on the connect callback.
+Meteor, Nightly, and Sender are browser-extension / `postMessage` wallets —
+there is no Flutter deep-link contract, so they are not faked here.
 
 > MyNearWallet remains fully supported until its announced sunset
-> (October 31, 2026). Intear and HOT are additional options, not replacements —
-> pick per user, at runtime.
+> (October 31, 2026). The other wallets are additional options, not
+> replacements — pick per user, at runtime.
 
 ## Platform setup (one-time)
 
@@ -281,6 +290,8 @@ Register it:
 
 **Web** — no setup; the callback returns to your app URL. Intear and HOT need
 no callback setup on any platform (responses arrive over their bridges).
+Bitte uses the same scheme as MyNearWallet; HERE uses
+`<scheme>://callback/here`.
 
 ## How it works
 
@@ -291,10 +302,19 @@ no callback setup on any platform (responses arrive over their bridges).
   the wallet's response arrives over the socket. Connecting can also add a
   function-call key, so `signer()` works here too.
 - **HOT**: requests are queued on HOT's relay and opened via `hotwallet://`;
-  the app polls the relay for the response.
+  the app polls the relay for the response. This is HERE Instant Wallet.
+- **Bitte**: browser redirect to `wallet.bitte.ai` / `testnet.wallet.bitte.ai`.
+  Connect returns `account_id` + `public_key` and does **not** add a
+  local function-call key. Payments use `/sign-transaction` and return
+  `transactionHashes`.
+- **HERE**: universal links `https://my.herewallet.app/call/{b58}` and
+  `/sign/{b58}` with `?returnUrl=`. Success is `?success=hash,hash`;
+  failure is `?failure=text`. Connect needs `account_id` and `public_key`
+  on that callback.
 - Intear and HOT wallet-produced NEP-413 signatures are verified locally.
   Connect and transaction metadata are not all signed; relays remain
-  availability dependencies.
+  availability dependencies. Bitte/HERE callback hashes are not signed
+  wallet assertions; enable `transactionFinality` for on-chain confirmation.
 - Keys persist via **`SecureKeyStore`** by default (Android Keystore /
   Apple Keychain / Windows DPAPI / Linux libsecret); on web — where no OS
   secret storage exists — a plain `SharedPrefsKeyStore` is used. Sessions

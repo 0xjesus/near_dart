@@ -1,16 +1,22 @@
-# near_wallet_connect_example
+# near_wallet_connect example
 
-A new Flutter project.
+Minimal Flutter app: one `NearWalletController`, one `NearConnectButton`.
 
-## Getting Started
+```dart
+final wallet = NearWalletController(
+  network: MyNearWalletNetwork.testnet,
+  contractId: AccountId('guestbook.near-examples.testnet'),
+  callbackScheme: 'nearsdk',
+);
+await wallet.init();
+```
 
-This project is a starting point for a Flutter application.
+The picker lists Intear first. MyNearWallet remains available until 31 Oct 2026.
 
-A few resources to get you started if this is your first Flutter project:
+Register `nearsdk` in AndroidManifest.xml and Info.plist (already set in this
+example). Then:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+cd packages/near_wallet_connect/example
+flutter run
+```

@@ -5,12 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:near_dart/near_dart.dart'
     show
         AccessKeyView,
+        BitteWalletAdapter,
+        BitteWalletConfig,
         BlockReference,
+        HereWalletAdapter,
+        HereWalletConfig,
         InMemoryKeyStore,
         IntearConnectionResult,
         KeyPairEd25519,
         MyNearWalletAdapter,
         MyNearWalletConfig,
+        NearNetwork,
         PublicKey,
         RpcResult;
 import 'package:near_wallet_connect/near_wallet_connect.dart';
@@ -77,6 +82,8 @@ void main() {
     expect(find.text('MyNearWallet'), findsOneWidget);
     expect(find.text('Intear Wallet'), findsOneWidget);
     expect(find.text('HOT Wallet'), findsOneWidget);
+    expect(find.text('Bitte Wallet'), findsOneWidget);
+    expect(find.text('HERE Wallet'), findsOneWidget);
   });
 
   testWidgets('account badge shortens compact account id', (tester) async {
@@ -1636,6 +1643,273 @@ void main() {
       },
     );
   });
+
+  group('Bitte and HERE redirect wallets', () {
+    test('testnet picker includes Bitte and HERE', () {
+      expect(
+        NearWalletOption.available(MyNearWalletNetwork.testnet),
+        containsAll([NearWalletOption.bitte, NearWalletOption.here]),
+      );
+      expect(
+        NearWalletOption.available(MyNearWalletNetwork.testnet),
+        isNot(contains(NearWalletOption.hot)),
+      );
+    });
+
+    test(
+      'Bitte connect stores a visibility session without a local key',
+      () async {
+        final pair = await KeyPairEd25519.generate();
+        final links = _PushLinkSource();
+        addTearDown(links.close);
+        final controller = _testController(
+          network: MyNearWalletNetwork.testnet,
+          linkSource: links,
+          bitteWalletAdapterBuilder: (_) => BitteWalletAdapter(
+            config: const BitteWalletConfig(
+              successUrl: 'test://callback/bitte',
+              failureUrl: 'test://callback/bitte-failure',
+              network: NearNetwork.testnet,
+            ),
+            launchUrl: (uri) async {
+              links.emit(
+                Uri.parse(
+                  'test://callback/bitte?account_id=alice.testnet'
+                  '&public_key=${pair.publicKey.value}',
+                ),
+              );
+              return true;
+            },
+          ),
+        );
+        await controller.init();
+        await controller.connect(wallet: NearWalletOption.bitte);
+
+        expect(controller.account?.accountId.value, 'alice.testnet');
+        expect(controller.walletOption, NearWalletOption.bitte);
+        expect(await controller.signer(), isNull);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString(_optionPrefsKey), NearWalletOption.bitte.name);
+        expect(prefs.getString(_hotPublicKeyPrefsKey), pair.publicKey.value);
+      },
+    );
+
+    test('Bitte sendTransactions returns callback hashes', () async {
+      final pair = await KeyPairEd25519.generate();
+      final links = _PushLinkSource();
+      addTearDown(links.close);
+      var launches = 0;
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        linkSource: links,
+        bitteWalletAdapterBuilder: (_) => BitteWalletAdapter(
+          config: const BitteWalletConfig(
+            successUrl: 'test://callback/bitte',
+            failureUrl: 'test://callback/bitte-failure',
+            network: NearNetwork.testnet,
+          ),
+          launchUrl: (uri) async {
+            launches++;
+            if (launches == 1) {
+              links.emit(
+                Uri.parse(
+                  'test://callback/bitte?account_id=alice.testnet'
+                  '&public_key=${pair.publicKey.value}',
+                ),
+              );
+            } else {
+              links.emit(
+                Uri.parse(
+                  'test://callback/bitte?transactionHashes=hash-one,hash-two',
+                ),
+              );
+            }
+            return true;
+          },
+        ),
+      );
+      await controller.init();
+      await controller.connect(wallet: NearWalletOption.bitte);
+
+      final outcomes = await controller.sendTransactions([
+        {'receiverId': 'alice.testnet', 'actions': <Map<String, dynamic>>[]},
+      ]);
+      expect(outcomes, [
+        {'transactionHash': 'hash-one'},
+        {'transactionHash': 'hash-two'},
+      ]);
+    });
+
+    test(
+      'HERE connect reads account_id from the universal-link callback',
+      () async {
+        final pair = await KeyPairEd25519.generate();
+        final links = _PushLinkSource();
+        addTearDown(links.close);
+        final controller = _testController(
+          network: MyNearWalletNetwork.mainnet,
+          linkSource: links,
+          hereWalletAdapterBuilder: (_) => HereWalletAdapter(
+            config: const HereWalletConfig(
+              returnUrl: 'test://callback/here',
+              network: NearNetwork.mainnet,
+              origin: 'test://app',
+            ),
+            launchUrl: (uri) async {
+              links.emit(
+                Uri.parse(
+                  'test://callback/here?success=sig&account_id=alice.near'
+                  '&public_key=${pair.publicKey.value}',
+                ),
+              );
+              return true;
+            },
+          ),
+        );
+        await controller.init();
+        await controller.connect(wallet: NearWalletOption.here);
+
+        expect(controller.account?.accountId.value, 'alice.near');
+        expect(controller.walletOption, NearWalletOption.here);
+        expect(await controller.signer(), isNull);
+      },
+    );
+
+    test('HERE connect without an account is invalidResponse', () async {
+      final links = _PushLinkSource();
+      addTearDown(links.close);
+      final controller = _testController(
+        network: MyNearWalletNetwork.mainnet,
+        linkSource: links,
+        hereWalletAdapterBuilder: (_) => HereWalletAdapter(
+          config: const HereWalletConfig(
+            returnUrl: 'test://callback/here',
+            network: NearNetwork.mainnet,
+          ),
+          launchUrl: (uri) async {
+            links.emit(
+              Uri.parse('test://callback/here?success=only-a-signature'),
+            );
+            return true;
+          },
+        ),
+      );
+      await controller.init();
+      await controller.connect(wallet: NearWalletOption.here);
+
+      expect(controller.account, isNull);
+      expect(
+        controller.lastException?.code,
+        NearErrorCode.walletResponseInvalid,
+      );
+    });
+
+    test('HERE sendTransactions returns success hashes', () async {
+      final pair = await KeyPairEd25519.generate();
+      final links = _PushLinkSource();
+      addTearDown(links.close);
+      var launches = 0;
+      final controller = _testController(
+        network: MyNearWalletNetwork.mainnet,
+        linkSource: links,
+        hereWalletAdapterBuilder: (_) => HereWalletAdapter(
+          config: const HereWalletConfig(
+            returnUrl: 'test://callback/here',
+            network: NearNetwork.mainnet,
+          ),
+          launchUrl: (uri) async {
+            launches++;
+            if (launches == 1) {
+              links.emit(
+                Uri.parse(
+                  'test://callback/here?account_id=alice.near'
+                  '&public_key=${pair.publicKey.value}&success=connect',
+                ),
+              );
+            } else {
+              links.emit(
+                Uri.parse('test://callback/here?success=tx-hash-a,tx-hash-b'),
+              );
+            }
+            return true;
+          },
+        ),
+      );
+      await controller.init();
+      await controller.connect(wallet: NearWalletOption.here);
+
+      final outcomes = await controller.sendTransactions([
+        {'receiverId': 'bob.near', 'actions': <Map<String, dynamic>>[]},
+      ]);
+      expect(outcomes, [
+        {'transactionHash': 'tx-hash-a'},
+        {'transactionHash': 'tx-hash-b'},
+      ]);
+    });
+
+    test('restores a Bitte visibility session', () async {
+      final pair = await KeyPairEd25519.generate();
+      SharedPreferences.setMockInitialValues({
+        _optionPrefsKey: NearWalletOption.bitte.name,
+        _accountPrefsKey: 'alice.testnet',
+        _networkPrefsKey: 'testnet',
+        _hotAccountPrefsKey: 'alice.testnet',
+        _hotPublicKeyPrefsKey: pair.publicKey.value,
+      });
+      final controller = _testController(network: MyNearWalletNetwork.testnet);
+
+      await controller.init();
+
+      expect(controller.account?.accountId.value, 'alice.testnet');
+      expect(controller.walletOption, NearWalletOption.bitte);
+      expect(controller.account?.publicKey, pair.publicKey);
+    });
+
+    test('Bitte and HERE signMessage is unsupported', () async {
+      final pair = await KeyPairEd25519.generate();
+      final links = _PushLinkSource();
+      addTearDown(links.close);
+      final controller = _testController(
+        network: MyNearWalletNetwork.testnet,
+        linkSource: links,
+        bitteWalletAdapterBuilder: (_) => BitteWalletAdapter(
+          config: const BitteWalletConfig(
+            successUrl: 'test://callback/bitte',
+            failureUrl: 'test://callback/bitte-failure',
+            network: NearNetwork.testnet,
+          ),
+          launchUrl: (uri) async {
+            links.emit(
+              Uri.parse(
+                'test://callback/bitte?account_id=alice.testnet'
+                '&public_key=${pair.publicKey.value}',
+              ),
+            );
+            return true;
+          },
+        ),
+      );
+      await controller.init();
+      await controller.connect(wallet: NearWalletOption.bitte);
+
+      await expectLater(
+        controller.signMessage(
+          Nep413Payload(
+            message: 'hi',
+            nonce: List<int>.filled(32, 1),
+            recipient: 'app.testnet',
+          ),
+        ),
+        throwsA(
+          isA<NearSdkException>().having(
+            (error) => error.code,
+            'code',
+            NearErrorCode.unsupportedOperation,
+          ),
+        ),
+      );
+    });
+  });
 }
 
 class _CountingNearRpcClient extends NearRpcClient {
@@ -1663,7 +1937,10 @@ NearWalletController _testController({
   MyNearWalletAdapter Function(NearLogger? logger)? myNearWalletAdapterBuilder,
   IntearWalletAdapter Function(NearLogger? logger)? intearWalletAdapterBuilder,
   HotWalletAdapter Function(NearLogger? logger)? hotWalletAdapterBuilder,
+  BitteWalletAdapter Function(NearLogger? logger)? bitteWalletAdapterBuilder,
+  HereWalletAdapter Function(NearLogger? logger)? hereWalletAdapterBuilder,
   NearWalletLinkSource linkSource = const _FakeLinkSource(),
+  Duration redirectTimeout = const Duration(minutes: 5),
 }) {
   final resolvedKeyStore = keyStore ?? InMemoryKeyStore();
   return NearWalletController(
@@ -1680,7 +1957,10 @@ NearWalletController _testController({
     myNearWalletAdapterBuilder: myNearWalletAdapterBuilder,
     intearWalletAdapterBuilder: intearWalletAdapterBuilder,
     hotWalletAdapterBuilder: hotWalletAdapterBuilder,
+    bitteWalletAdapterBuilder: bitteWalletAdapterBuilder,
+    hereWalletAdapterBuilder: hereWalletAdapterBuilder,
     linkSource: linkSource,
+    redirectTimeout: redirectTimeout,
   );
 }
 

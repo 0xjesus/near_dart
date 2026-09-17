@@ -93,6 +93,8 @@ export 'src/wallet/adapters/wallet_connect_adapter.dart';
 export 'src/wallet/adapters/my_near_wallet_adapter.dart';
 export 'src/wallet/adapters/intear_wallet_adapter.dart';
 export 'src/wallet/adapters/hot_wallet_adapter.dart';
+export 'src/wallet/adapters/bitte_wallet_adapter.dart';
+export 'src/wallet/adapters/here_wallet_adapter.dart';
 
 // NEAR Intents
 export 'src/intents/one_click_auth.dart';

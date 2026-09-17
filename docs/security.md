@@ -10,6 +10,7 @@ application's responsibility.
 |---|---|---|---|
 | MyNearWallet function-call key | SDK at connect time | Local gas-only calls to the configured contract | Application `KeyStore` |
 | Intear app/function-call key | SDK at connect time | Authenticate bridge requests and, when approved, local contract calls | Application `KeyStore` |
+| HOT / Bitte / HERE visibility key | Wallet at connect time | Identify the connected account; no local `signer()` | Session metadata in preferences |
 | Wallet full-access key | Wallet | Payments and wallet-produced signatures | Never handled by the SDK |
 
 Function-call and Intear app keys are still secrets. Scope function-call keys
@@ -85,6 +86,13 @@ signatures, not every WebSocket or HTTP relay response. In particular, connect
 account metadata and transaction-result metadata are not wallet-signed by
 these adapters.
 
+Bitte and HERE connect/transaction callbacks are wallet redirects, not
+signed NEP-413 statements. Bitte returns `account_id` / `public_key` or
+`transactionHashes`. HERE returns `success` hashes (and, for connect,
+account/key fields when the wallet includes them). Treat those values as
+unauthenticated metadata until optional `transactionFinality` confirms
+hashes on chain.
+
 The Intear bridge and HOT relay remain availability dependencies: they can
 drop, delay, replay, substitute, or withhold unsigned transport metadata. HOT
 request IDs bind polling to an encoded request, and Intear uses a per-request
@@ -111,15 +119,16 @@ final controller = NearWalletController(
 ### Access-key verification
 
 With `verifyAccessKeyOnConnect: true`, fresh MyNearWallet callbacks, fresh
-Intear/HOT connections, and restored sessions call `view_access_key` at final
+Intear/HOT/Bitte/HERE connections, and restored sessions call `view_access_key` at final
 block finality before the controller publishes the account.
 
 - MyNearWallet and Intear keys must exist and have function-call permission
   for `contractId` covering every configured `methodNames` entry. An empty
   on-chain method list covers all methods; a restricted on-chain list does not
   satisfy an empty requested list.
-- HOT keys must exist for the account, but no function-call scope is required
-  because HOT does not provide the controller's local `signer()` key.
+- HOT, Bitte, and HERE keys must exist for the account, but no function-call
+  scope is required because those wallets do not provide the controller's
+  local `signer()` key.
 - A definite missing/mismatched restored key clears the persisted session. A
   retryable RPC failure leaves credentials available for a later retry but
   does not publish a connected account.
@@ -130,7 +139,7 @@ authenticate unrelated relay fields or prove user intent for a transaction.
 ### Transaction confirmation
 
 With a non-null `transactionFinality`, `NearWalletController.sendTransactions`
-extracts every distinct hash from Intear/HOT outcomes, calls `txStatus` with
+extracts every distinct hash from Intear/HOT/Bitte/HERE outcomes, calls `txStatus` with
 the connected sender and requested `waitUntil`, and rejects missing hashes,
 RPC failures, unknown status, and on-chain failure. After successful
 confirmation it returns the original wallet outcome list unchanged. With the

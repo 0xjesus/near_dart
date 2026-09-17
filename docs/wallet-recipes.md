@@ -25,11 +25,12 @@ Use explicit `methodNames`. Empty method scope grants the function-call key
 access to every method on the contract.
 
 Both security-policy options are opt-in. Access-key verification checks fresh
-and restored MyNearWallet/Intear function-call scope; HOT checks only that its
-returned account/key pair exists. Transaction finality confirms hashes from
-Intear/HOT `sendTransactions` with `txStatus` and then returns the original
-wallet outcomes. See the [security model](security.md#optional-on-chain-policy)
-for availability and residual metadata-trust tradeoffs.
+and restored MyNearWallet/Intear function-call scope; HOT, Bitte, and HERE
+check only that the returned account/key pair exists. Transaction finality
+confirms hashes from Intear/HOT/Bitte/HERE `sendTransactions` with `txStatus`
+and then returns the original wallet outcomes. See the
+[security model](security.md#optional-on-chain-policy) for availability and
+residual metadata-trust tradeoffs.
 
 ## Feature And Platform Matrix
 
@@ -38,6 +39,8 @@ for availability and residual metadata-trust tradeoffs.
 | MyNearWallet redirect | Verified | Verified | Verified | Needs device verification | Needs device verification | Needs device verification |
 | Intear bridge + native app | Verified | Verified | Native wallet app required | Needs device verification | Needs device verification | Needs device verification |
 | HOT relay + wallet app | Mainnet only | Mainnet only | Mainnet only | Needs device verification | Needs device verification | Needs device verification |
+| Bitte redirect | Needs device verification | Needs device verification | Connect via `init()` | Needs device verification | Needs device verification | Needs device verification |
+| HERE universal links | Needs device verification | Needs device verification | Connect via `init()` | Needs device verification | Needs device verification | Needs device verification |
 | Default key persistence | Encrypted | Encrypted | Plain origin storage | Encrypted | Encrypted | Encrypted where Secret Service is available |
 
 RPC reads and local signing are supported on all six platforms. Wallet support
@@ -166,8 +169,10 @@ bridge session, request method, and response are kept within one operation
 budget. Browser use still requires an installed native wallet that can handle
 the `intear://` scheme.
 
-Android may suspend background sockets while the wallet is open. Short approval
-flows work best; long on-chain flows should be tested on real devices.
+On IO platforms the adapter sends WebSocket protocol pings every 20s so
+Android is less likely to idle-drop the bridge while the wallet is open.
+Android may still suspend background sockets; short approval flows work
+best, and long on-chain flows should be tested on real devices.
 
 Intear verifies wallet-produced NEP-413 signatures, including an optional
 message requested during connect, before returning them. Bridge connect and
@@ -211,6 +216,75 @@ Common typed failures are `wrongNetwork`, `deepLinkUnavailable`,
 `userRejected`, `walletResponseInvalid`, `signatureVerificationFailed`,
 `rpcTimeout`, `rpcUnavailable`, `rateLimited`, and `cancelled`.
 
+## Bitte Wallet
+
+Networks: testnet (`https://testnet.wallet.bitte.ai`) and mainnet
+(`https://wallet.bitte.ai`).
+
+Flow: browser redirect. Connect uses `/connect?success_url=` and returns
+`account_id` plus `public_key`. Bitte does **not** add a local function-call
+key, so `signer()` is null after connect — same session shape as HOT.
+Payments use `/sign-transaction?transactions_data=` and return
+`transactionHashes`.
+
+```dart
+await controller.connect(wallet: NearWalletOption.bitte);
+await controller.sendTransactions([
+  {
+    'receiverId': 'app.testnet',
+    'actions': [
+      {
+        'type': 'FunctionCall',
+        'params': {
+          'methodName': 'tip',
+          'args': {},
+          'gas': '30000000000000',
+          'deposit': '1',
+        },
+      },
+    ],
+  },
+]);
+```
+
+On mobile the controller waits for the inbound callback. On web, connect
+completes in `init()` after the page returns; `sendTransactions` cannot
+return hashes to the same isolate after a full-page navigation.
+
+Bitte has no documented NEP-413 redirect; `signMessage` is
+`unsupportedOperation`.
+
+## HERE Wallet
+
+Networks: encoded in the payload (`mainnet` or `testnet`). Universal-link
+origin is `https://my.herewallet.app`.
+
+HERE publishes two protocols:
+
+- **Instant Wallet** (`h4n.app` relay) — this is [HOT Wallet](#hot-wallet).
+- **Universal sign links** — static `/call/{b58json}` and `/sign/{b58json}`
+  URLs with `?returnUrl=`. Designed so a payment does not need a prior login.
+
+```dart
+await controller.connect(wallet: NearWalletOption.here);
+await controller.sendTransactions(transactions);
+```
+
+Connect opens `/sign` with `{receiver, message: "Connect", network}`. The
+wallet must return `account_id` and `public_key` (query, fragment, or JSON
+inside `success`). A hash- or signature-only callback is
+`walletResponseInvalid` — use HOT when you need Instant Wallet login.
+
+`returnUrl` must not include a query string; HERE appends `?success=` or
+`?failure=`. The controller uses `<scheme>://callback/here`.
+
+HERE `/sign` is not NEP-413. `signMessage` is `unsupportedOperation`.
+
+Meteor Wallet (popup + `postMessage`), Nightly, and Sender are
+browser-injected wallets. They have no Flutter URL contract; the SDK does
+not ship a fake adapter for them. WalletConnect remains the abstract
+`WalletConnectAdapterBase` to implement with `reown_appkit` or similar.
+
 ## Callback And Failure Summary
 
 | Wallet | Inbound return | Success data | Failure data |
@@ -218,6 +292,8 @@ Common typed failures are `wrongNetwork`, `deepLinkUnavailable`,
 | MyNearWallet | Mobile custom scheme or current web route | Account/key, transaction hashes, or signed-message fragment | `errorCode`, `errorMessage`, invalid/missing/replayed callback |
 | Intear | Same WebSocket bridge session | Typed bridge response bound to the active operation | Bridge rejection, invalid response, timeout, or closed session |
 | HOT | Request-specific relay polling | Typed relay response for the request ID | Relay rejection, invalid response, timeout, rate limit, or unavailable wallet app |
+| Bitte | Mobile custom scheme or current web route | `account_id` + `public_key`, or `transactionHashes` | `errorCode` / `error` |
+| HERE | `returnUrl` with `success` / `failure` | Comma-separated hashes; connect also needs account/key | `failure` text |
 
 Applications should branch on `NearSdkException.code`, not wallet-specific
 message text. The controller exposes the same value as `lastException`.

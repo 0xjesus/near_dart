@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../borsh/transaction_serializer.dart' show sha256Hash;
+import 'intear_ws_connect_stub.dart'
+    if (dart.library.io) 'intear_ws_connect_io.dart'
+    as intear_ws;
 import '../../crypto/key_pair.dart';
 import '../../diagnostics/near_diagnostics.dart';
 import '../../diagnostics/near_errors.dart';
@@ -79,12 +82,14 @@ class IntearConnectionResult {
 /// signing `sha256("{nonce}|{payload}")` with it.
 ///
 /// **Android note:** the bridge session lives only as long as this app's
-/// WebSocket. Android restricts background network shortly after the wallet
-/// app comes to the foreground, so the user must approve before the OS cuts
-/// the socket (about a minute for battery-exempted apps, less otherwise).
-/// Long approvals — e.g. accepting the function-call-key grant, which sends
-/// an on-chain transaction — may exceed that window; the connect itself
-/// completes in seconds and is unaffected in practice.
+/// WebSocket. On IO platforms the adapter sends WebSocket protocol pings
+/// every 20s so the OS is less likely to idle-drop the socket while the
+/// wallet is open. Android can still restrict background network; the user
+/// should approve before that window (about a minute for battery-exempted
+/// apps, less otherwise). Long approvals — e.g. accepting the
+/// function-call-key grant, which sends an on-chain transaction — may
+/// exceed that window; the connect itself completes in seconds and is
+/// unaffected in practice.
 class IntearWalletAdapter {
   IntearWalletAdapter({
     required this.config,
@@ -92,7 +97,7 @@ class IntearWalletAdapter {
     required this.launchUrl,
     WebSocketChannel Function(Uri)? connectWebSocket,
     this.logger,
-  }) : _connect = connectWebSocket ?? WebSocketChannel.connect;
+  }) : _connect = connectWebSocket ?? intear_ws.connectIntearWebSocket;
 
   final IntearWalletConfig config;
 
