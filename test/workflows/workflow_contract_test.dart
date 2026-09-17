@@ -63,14 +63,24 @@ void main() {
     expect(windows['runs-on'], 'windows-2022');
   });
 
-  test('OpenAPI sync has least privileges required to open a PR', () {
+  test('OpenAPI sync has privileges to open, merge, and dispatch Tests', () {
     final jobs =
         workflow('.github/workflows/sync-openapi.yml')['jobs'] as YamlMap;
     final sync = jobs['sync'] as YamlMap;
     expect((sync['permissions'] as YamlMap).cast<String, Object?>(), {
       'contents': 'write',
       'pull-requests': 'write',
+      'actions': 'write',
     });
+
+    final commands = jobCommands('.github/workflows/sync-openapi.yml', 'sync');
+    expect(commands.any((command) => command.contains('gh pr merge')), isTrue);
+    expect(
+      commands.any(
+        (command) => command.contains('gh workflow run Tests --ref main'),
+      ),
+      isTrue,
+    );
   });
 
   test('aggregate gate requires every claimed platform', () {

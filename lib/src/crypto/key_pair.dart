@@ -133,7 +133,7 @@ Future<bool> verifySignature({
         !isCanonicalEd25519Scalar(signature.sublist(32))) {
       return false;
     }
-    return c.Ed25519().verify(
+    return await c.Ed25519().verify(
       message,
       signature: c.Signature(
         signature,
