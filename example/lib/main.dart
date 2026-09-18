@@ -10,6 +10,7 @@ import 'package:app_links/app_links.dart';
 
 import 'connect_wallet_page.dart';
 import 'glass.dart';
+import 'intents_swap_page.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 void main() {
@@ -307,6 +308,16 @@ class HomePage extends StatelessWidget {
         'Sign in with NEAR',
         'NEP-413 session auth vs a live API',
         () => SignInWithNearPage(appState: appState),
+        featured: true,
+      ),
+      _Feature(
+        Icons.swap_horiz,
+        'NEAR Intents',
+        'Live 1Click wNEAR → USDC quote',
+        () => IntentsSwapPage(
+          connectedAccountId: appState.connectedAccountId,
+          isMainnet: appState.network == Network.mainnet,
+        ),
         featured: true,
       ),
       _Feature(

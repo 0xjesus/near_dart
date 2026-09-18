@@ -16,7 +16,7 @@ below. Built on [`near_dart`](https://pub.dev/packages/near_dart).
 
 ```yaml
 dependencies:
-  near_wallet_connect: ^0.5.0
+  near_wallet_connect: ^0.5.1
 ```
 
 ## Use it

@@ -1,3 +1,8 @@
+## 0.5.1
+
+- Upgrade `app_links` to `^7.0.0` and `flutter_secure_storage` to `^11.2.0`
+  so pub.dev scores current dependencies.
+
 ## 0.5.0
 
 Released 2026-09-17. Requires `near_dart ^0.6.0`.
