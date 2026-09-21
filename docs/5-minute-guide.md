@@ -124,7 +124,20 @@ Use `NearGas.teraGas(30)` for an explicit 30 TGas limit and
 `NearToken.oneYocto()` for methods that require proof of full-access-key
 intent.
 
-## 5. Flutter Wallet UI
+## 5. Flutter App That Pays
+
+From this repository:
+
+```bash
+./tool/create_near_app.sh my_near_pay
+cd my_near_pay
+flutter run
+```
+
+Paste the same throwaway testnet key and send 0.001 NEAR. Full steps:
+[templates/pay_testnet/README.md](../templates/pay_testnet/README.md).
+
+## 6. Flutter Wallet UI
 
 Add `near_wallet_connect` when the user, rather than the application, should
 approve wallet actions:

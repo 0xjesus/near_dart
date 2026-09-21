@@ -3,6 +3,7 @@
 Complete NEAR Protocol SDK for Flutter/Dart.
 
 [![pub package](https://img.shields.io/pub/v/near_dart.svg)](https://pub.dev/packages/near_dart)
+[![Tests](https://github.com/0xjesus/near_dart/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/0xjesus/near_dart/actions/workflows/test.yml?query=branch%3Amain)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A type-safe, platform-agnostic SDK for building NEAR Protocol applications with Flutter and Dart. Works on iOS, Android, Web, and Desktop.
@@ -53,6 +54,7 @@ Reference app evidence:
 
 ## Guides
 
+- [Pay on testnet in 15 minutes (Flutter)](https://github.com/0xjesus/near_dart/blob/main/templates/pay_testnet/README.md) — `./tool/create_near_app.sh my_near_pay`
 - [First transaction in 5 minutes](https://github.com/0xjesus/near_dart/blob/main/docs/5-minute-guide.md)
 - [Wallet recipes](https://github.com/0xjesus/near_dart/blob/main/docs/wallet-recipes.md)
 - [Flutter architecture recipes](https://github.com/0xjesus/near_dart/blob/main/docs/flutter-architectures.md)

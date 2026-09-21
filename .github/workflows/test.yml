@@ -22,9 +22,19 @@ on:
         type: boolean
 
 jobs:
+  # GITHUB_TOKEN PRs (OpenAPI bot) do not start this workflow; if a PAT ever
+  # does, skip instead of leaving a red/action_required check.
+  should-run:
+    name: Should run Tests
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - run: echo "Running Tests for ${{ github.actor }}"
+
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    needs: should-run
     steps:
       - uses: actions/checkout@v4
 
@@ -190,7 +200,7 @@ jobs:
   jsonrpc-client:
     name: near_jsonrpc_client (generated)
     runs-on: ubuntu-latest
-    needs: analyze
+    needs: [should-run, analyze]
     defaults:
       run:
         working-directory: packages/near_jsonrpc_client
@@ -214,7 +224,7 @@ jobs:
   wallet-connect:
     name: near_wallet_connect
     runs-on: ubuntu-latest
-    needs: analyze
+    needs: [should-run, analyze]
     defaults:
       run:
         working-directory: packages/near_wallet_connect
@@ -263,9 +273,19 @@ jobs:
         run: flutter analyze lib
         working-directory: example
       - name: Build APK
-        run: flutter build apk --debug
         working-directory: example
         timeout-minutes: 20
+        run: |
+          for attempt in 1 2 3; do
+            echo "APK build attempt ${attempt}"
+            if flutter build apk --debug; then
+              exit 0
+            fi
+            echo "APK build failed (attempt ${attempt}). Retrying in 25s…"
+            sleep 25
+          done
+          echo "APK build failed after 3 attempts"
+          exit 1
 
   example-ios:
     name: Example builds (iOS)
@@ -355,7 +375,9 @@ jobs:
   all-tests-pass:
     name: All Tests Pass
     runs-on: ubuntu-latest
+    if: always() && needs.should-run.result == 'success'
     needs:
+      - should-run
       - analyze
       - unit-tests
       - e2e-tests
@@ -369,7 +391,6 @@ jobs:
       - example-linux
       - example-macos
       - example-windows
-    if: always()
     steps:
       - name: Check all required jobs passed
         run: |

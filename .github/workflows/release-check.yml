@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   near-dart:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +26,7 @@ jobs:
       - run: dart test --exclude-tags integration
       - run: dart pub publish --dry-run
   near-jsonrpc-client:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,6 +41,7 @@ jobs:
       - run: dart test
       - run: dart pub publish --dry-run
   near-wallet-connect:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     defaults:
       run:
