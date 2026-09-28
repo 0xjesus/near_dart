@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.27
+// Source: nearcore OpenAPI 1.3.33
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -230,9 +230,6 @@ class AccountDataView {
 
 /// Alias for `AccountId`.
 typedef AccountId = String;
-
-/// Alias for `AccountIdValidityRulesVersion`.
-typedef AccountIdValidityRulesVersion = int;
 
 /// Generated from `AccountInfo`.
 class AccountInfo {
@@ -6258,8 +6255,7 @@ class LimitConfig {
     account_id_validity_rules_version:
         json[r'account_id_validity_rules_version'] == null
         ? null
-        : json[r'account_id_validity_rules_version']
-              as AccountIdValidityRulesVersion,
+        : (json[r'account_id_validity_rules_version'] as num).toInt(),
     initial_memory_pages: json[r'initial_memory_pages'] == null
         ? null
         : (json[r'initial_memory_pages'] as num).toInt(),
@@ -6401,7 +6397,7 @@ class LimitConfig {
         : (json[r'yield_timeout_length_in_blocks'] as num).toInt(),
   );
 
-  final AccountIdValidityRulesVersion? account_id_validity_rules_version;
+  final int? account_id_validity_rules_version;
   final int? initial_memory_pages;
   final int? max_actions_per_receipt;
   final int? max_arguments_length;
