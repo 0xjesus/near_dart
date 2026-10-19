@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.33
+// Source: nearcore OpenAPI 1.3.36
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names
@@ -22,7 +22,7 @@ class NearJsonRpcClient {
     : _http = httpClient ?? http.Client();
 
   /// nearcore OpenAPI spec version this client was generated from.
-  static const specVersion = '1.3.33';
+  static const specVersion = '1.3.36';
   final String endpoint;
   final http.Client _http;
   var _id = 0;
@@ -112,30 +112,6 @@ class NearJsonRpcClient {
     return RpcLightClientBlockProofResponse.fromJson(result);
   }
 
-  /// Calls the `EXPERIMENTAL_light_client_chunk_execution_proof` JSON-RPC method.
-  Future<RpcLightClientChunkExecutionProofResponse>
-  EXPERIMENTALLightClientChunkExecutionProof(
-    RpcLightClientChunkExecutionProofRequest params,
-  ) async {
-    final result = await _call(
-      r'EXPERIMENTAL_light_client_chunk_execution_proof',
-      params.toJson(),
-    );
-    return RpcLightClientChunkExecutionProofResponse.fromJson(result);
-  }
-
-  /// Calls the `EXPERIMENTAL_light_client_execution_outcome_proof` JSON-RPC method.
-  Future<RpcLightClientExecutionOutcomeProofResponse>
-  EXPERIMENTALLightClientExecutionOutcomeProof(
-    RpcLightClientExecutionOutcomeProofRequest params,
-  ) async {
-    final result = await _call(
-      r'EXPERIMENTAL_light_client_execution_outcome_proof',
-      params.toJson(),
-    );
-    return RpcLightClientExecutionOutcomeProofResponse.fromJson(result);
-  }
-
   /// Calls the `EXPERIMENTAL_light_client_proof` JSON-RPC method.
   Future<RpcLightClientExecutionProofResponse> EXPERIMENTALLightClientProof(
     RpcLightClientExecutionProofRequest params,
@@ -145,17 +121,6 @@ class NearJsonRpcClient {
       params.toJson(),
     );
     return RpcLightClientExecutionProofResponse.fromJson(result);
-  }
-
-  /// Calls the `EXPERIMENTAL_light_client_state_proof` JSON-RPC method.
-  Future<RpcLightClientStateProofResponse> EXPERIMENTALLightClientStateProof(
-    RpcLightClientStateProofRequest params,
-  ) async {
-    final result = await _call(
-      r'EXPERIMENTAL_light_client_state_proof',
-      params.toJson(),
-    );
-    return RpcLightClientStateProofResponse.fromJson(result);
   }
 
   /// Calls the `EXPERIMENTAL_maintenance_windows` JSON-RPC method.

@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.33
+// Source: nearcore OpenAPI 1.3.36
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -1111,107 +1111,6 @@ class ChunkDistributionUris {
   };
 }
 
-/// Generated from `ChunkExecutionProofView`.
-class ChunkExecutionProofView {
-  const ChunkExecutionProofView({
-    this.certifying_block_header_lite,
-    this.certifying_block_proof,
-    this.roots,
-    this.roots_proof,
-  });
-
-  factory ChunkExecutionProofView.fromJson(Map<String, dynamic> json) =>
-      ChunkExecutionProofView(
-        certifying_block_header_lite:
-            json[r'certifying_block_header_lite'] == null
-            ? null
-            : LightClientBlockLiteView.fromJson(
-                json[r'certifying_block_header_lite'],
-              ),
-        certifying_block_proof: json[r'certifying_block_proof'] == null
-            ? null
-            : (json[r'certifying_block_proof'] as List)
-                  .map<MerklePathItem>((e) => MerklePathItem.fromJson(e))
-                  .toList(),
-        roots: json[r'roots'] == null
-            ? null
-            : ChunkExecutionRoots.fromJson(json[r'roots']),
-        roots_proof: json[r'roots_proof'] == null
-            ? null
-            : (json[r'roots_proof'] as List)
-                  .map<MerklePathItem>((e) => MerklePathItem.fromJson(e))
-                  .toList(),
-      );
-
-  final LightClientBlockLiteView? certifying_block_header_lite;
-  final List<MerklePathItem>? certifying_block_proof;
-  final ChunkExecutionRoots? roots;
-  final List<MerklePathItem>? roots_proof;
-
-  Map<String, dynamic> toJson() => {
-    if (certifying_block_header_lite != null)
-      r'certifying_block_header_lite': certifying_block_header_lite?.toJson(),
-    if (certifying_block_proof != null)
-      r'certifying_block_proof': certifying_block_proof
-          ?.map((e) => e.toJson())
-          .toList(),
-    if (roots != null) r'roots': roots?.toJson(),
-    if (roots_proof != null)
-      r'roots_proof': roots_proof?.map((e) => e.toJson()).toList(),
-  };
-}
-
-/// Union type generated from `ChunkExecutionRoots`.
-///
-/// Holds the raw decoded JSON; inspect [json] for the
-/// active variant (NEAR serializes these tagged).
-class ChunkExecutionRoots {
-  const ChunkExecutionRoots(this.json);
-  factory ChunkExecutionRoots.fromJson(dynamic json) =>
-      ChunkExecutionRoots(json);
-  final dynamic json;
-  dynamic toJson() => json;
-}
-
-/// Generated from `ChunkExecutionRootsV1`.
-class ChunkExecutionRootsV1 {
-  const ChunkExecutionRootsV1({
-    this.chunk_id,
-    this.outcome_root,
-    this.outgoing_receipts_root,
-    this.state_root,
-  });
-
-  factory ChunkExecutionRootsV1.fromJson(Map<String, dynamic> json) =>
-      ChunkExecutionRootsV1(
-        chunk_id: json[r'chunk_id'] == null
-            ? null
-            : SpiceChunkId.fromJson(json[r'chunk_id']),
-        outcome_root: json[r'outcome_root'] == null
-            ? null
-            : json[r'outcome_root'] as CryptoHash,
-        outgoing_receipts_root: json[r'outgoing_receipts_root'] == null
-            ? null
-            : json[r'outgoing_receipts_root'] as CryptoHash,
-        state_root: json[r'state_root'] == null
-            ? null
-            : json[r'state_root'] as CryptoHash,
-      );
-
-  final SpiceChunkId? chunk_id;
-  final CryptoHash? outcome_root;
-  final CryptoHash? outgoing_receipts_root;
-  final CryptoHash? state_root;
-
-  Map<String, dynamic> toJson() => {
-    if (chunk_id != null) r'chunk_id': chunk_id?.toJson(),
-    if (outcome_root != null) r'outcome_root': outcome_root,
-    if (outgoing_receipts_root != null)
-      r'outgoing_receipts_root': outgoing_receipts_root,
-    if (state_root != null) r'state_root': state_root,
-  };
-}
-
 /// Alias for `ChunkHash`.
 typedef ChunkHash = CryptoHash;
 
@@ -1421,8 +1320,6 @@ class CongestionControlConfigView {
     this.max_tx_gas,
     this.min_outgoing_gas,
     this.min_tx_gas,
-    this.outgoing_receipts_big_size_limit,
-    this.outgoing_receipts_usual_size_limit,
     this.reject_tx_congestion_threshold,
   });
 
@@ -1457,14 +1354,6 @@ class CongestionControlConfigView {
     min_tx_gas: json[r'min_tx_gas'] == null
         ? null
         : json[r'min_tx_gas'] as NearGas,
-    outgoing_receipts_big_size_limit:
-        json[r'outgoing_receipts_big_size_limit'] == null
-        ? null
-        : (json[r'outgoing_receipts_big_size_limit'] as num).toInt(),
-    outgoing_receipts_usual_size_limit:
-        json[r'outgoing_receipts_usual_size_limit'] == null
-        ? null
-        : (json[r'outgoing_receipts_usual_size_limit'] as num).toInt(),
     reject_tx_congestion_threshold:
         json[r'reject_tx_congestion_threshold'] == null
         ? null
@@ -1480,8 +1369,6 @@ class CongestionControlConfigView {
   final NearGas? max_tx_gas;
   final NearGas? min_outgoing_gas;
   final NearGas? min_tx_gas;
-  final int? outgoing_receipts_big_size_limit;
-  final int? outgoing_receipts_usual_size_limit;
   final double? reject_tx_congestion_threshold;
 
   Map<String, dynamic> toJson() => {
@@ -1499,10 +1386,6 @@ class CongestionControlConfigView {
     if (max_tx_gas != null) r'max_tx_gas': max_tx_gas,
     if (min_outgoing_gas != null) r'min_outgoing_gas': min_outgoing_gas,
     if (min_tx_gas != null) r'min_tx_gas': min_tx_gas,
-    if (outgoing_receipts_big_size_limit != null)
-      r'outgoing_receipts_big_size_limit': outgoing_receipts_big_size_limit,
-    if (outgoing_receipts_usual_size_limit != null)
-      r'outgoing_receipts_usual_size_limit': outgoing_receipts_usual_size_limit,
     if (reject_tx_congestion_threshold != null)
       r'reject_tx_congestion_threshold': reject_tx_congestion_threshold,
   };
@@ -2158,6 +2041,30 @@ class DurationAsStdSchemaProvider {
   Map<String, dynamic> toJson() => {
     if (nanos != null) r'nanos': nanos,
     if (secs != null) r'secs': secs,
+  };
+}
+
+/// Generated from `EccTransactionView`.
+class EccTransactionView {
+  const EccTransactionView({this.contract_id, this.hash, this.payload});
+
+  factory EccTransactionView.fromJson(Map<String, dynamic> json) =>
+      EccTransactionView(
+        contract_id: json[r'contract_id'] == null
+            ? null
+            : json[r'contract_id'] as AccountId,
+        hash: json[r'hash'] == null ? null : json[r'hash'] as CryptoHash,
+        payload: json[r'payload'] == null ? null : json[r'payload'] as String,
+      );
+
+  final AccountId? contract_id;
+  final CryptoHash? hash;
+  final String? payload;
+
+  Map<String, dynamic> toJson() => {
+    if (contract_id != null) r'contract_id': contract_id,
+    if (hash != null) r'hash': hash,
+    if (payload != null) r'payload': payload,
   };
 }
 
@@ -4427,72 +4334,6 @@ class JsonRpcRequest_for_EXPERIMENTAL_light_client_block_proof {
   };
 }
 
-/// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof`.
-class JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof {
-  const JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof({
-    this.id,
-    this.jsonrpc,
-    this.method,
-    this.params,
-  });
-
-  factory JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof.fromJson(
-    Map<String, dynamic> json,
-  ) => JsonRpcRequest_for_EXPERIMENTAL_light_client_chunk_execution_proof(
-    id: json[r'id'] == null ? null : json[r'id'] as String,
-    jsonrpc: json[r'jsonrpc'] == null ? null : json[r'jsonrpc'] as String,
-    method: json[r'method'] == null ? null : json[r'method'] as String,
-    params: json[r'params'] == null
-        ? null
-        : RpcLightClientChunkExecutionProofRequest.fromJson(json[r'params']),
-  );
-
-  final String? id;
-  final String? jsonrpc;
-  final String? method;
-  final RpcLightClientChunkExecutionProofRequest? params;
-
-  Map<String, dynamic> toJson() => {
-    if (id != null) r'id': id,
-    if (jsonrpc != null) r'jsonrpc': jsonrpc,
-    if (method != null) r'method': method,
-    if (params != null) r'params': params?.toJson(),
-  };
-}
-
-/// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof`.
-class JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof {
-  const JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof({
-    this.id,
-    this.jsonrpc,
-    this.method,
-    this.params,
-  });
-
-  factory JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof.fromJson(
-    Map<String, dynamic> json,
-  ) => JsonRpcRequest_for_EXPERIMENTAL_light_client_execution_outcome_proof(
-    id: json[r'id'] == null ? null : json[r'id'] as String,
-    jsonrpc: json[r'jsonrpc'] == null ? null : json[r'jsonrpc'] as String,
-    method: json[r'method'] == null ? null : json[r'method'] as String,
-    params: json[r'params'] == null
-        ? null
-        : RpcLightClientExecutionOutcomeProofRequest.fromJson(json[r'params']),
-  );
-
-  final String? id;
-  final String? jsonrpc;
-  final String? method;
-  final RpcLightClientExecutionOutcomeProofRequest? params;
-
-  Map<String, dynamic> toJson() => {
-    if (id != null) r'id': id,
-    if (jsonrpc != null) r'jsonrpc': jsonrpc,
-    if (method != null) r'method': method,
-    if (params != null) r'params': params?.toJson(),
-  };
-}
-
 /// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_proof`.
 class JsonRpcRequest_for_EXPERIMENTAL_light_client_proof {
   const JsonRpcRequest_for_EXPERIMENTAL_light_client_proof({
@@ -4517,39 +4358,6 @@ class JsonRpcRequest_for_EXPERIMENTAL_light_client_proof {
   final String? jsonrpc;
   final String? method;
   final RpcLightClientExecutionProofRequest? params;
-
-  Map<String, dynamic> toJson() => {
-    if (id != null) r'id': id,
-    if (jsonrpc != null) r'jsonrpc': jsonrpc,
-    if (method != null) r'method': method,
-    if (params != null) r'params': params?.toJson(),
-  };
-}
-
-/// Generated from `JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof`.
-class JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof {
-  const JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof({
-    this.id,
-    this.jsonrpc,
-    this.method,
-    this.params,
-  });
-
-  factory JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof.fromJson(
-    Map<String, dynamic> json,
-  ) => JsonRpcRequest_for_EXPERIMENTAL_light_client_state_proof(
-    id: json[r'id'] == null ? null : json[r'id'] as String,
-    jsonrpc: json[r'jsonrpc'] == null ? null : json[r'jsonrpc'] as String,
-    method: json[r'method'] == null ? null : json[r'method'] as String,
-    params: json[r'params'] == null
-        ? null
-        : RpcLightClientStateProofRequest.fromJson(json[r'params']),
-  );
-
-  final String? id;
-  final String? jsonrpc;
-  final String? method;
-  final RpcLightClientStateProofRequest? params;
 
   Map<String, dynamic> toJson() => {
     if (id != null) r'id': id,
@@ -5802,42 +5610,6 @@ class JsonRpcResponse_for_RpcLightClientBlockProofResponse_and_RpcLightClientPro
   dynamic toJson() => json;
 }
 
-/// Union type generated from `JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError`.
-///
-/// Holds the raw decoded JSON; inspect [json] for the
-/// active variant (NEAR serializes these tagged).
-class JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError {
-  const JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError(
-    this.json,
-  );
-  factory JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError.fromJson(
-    dynamic json,
-  ) =>
-      JsonRpcResponse_for_RpcLightClientChunkExecutionProofResponse_and_RpcLightClientProofError(
-        json,
-      );
-  final dynamic json;
-  dynamic toJson() => json;
-}
-
-/// Union type generated from `JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError`.
-///
-/// Holds the raw decoded JSON; inspect [json] for the
-/// active variant (NEAR serializes these tagged).
-class JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError {
-  const JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError(
-    this.json,
-  );
-  factory JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError.fromJson(
-    dynamic json,
-  ) =>
-      JsonRpcResponse_for_RpcLightClientExecutionOutcomeProofResponse_and_RpcLightClientProofError(
-        json,
-      );
-  final dynamic json;
-  dynamic toJson() => json;
-}
-
 /// Union type generated from `JsonRpcResponse_for_RpcLightClientExecutionProofResponse_and_RpcLightClientProofError`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -5868,24 +5640,6 @@ class JsonRpcResponse_for_RpcLightClientNextBlockResponse_and_RpcLightClientNext
     dynamic json,
   ) =>
       JsonRpcResponse_for_RpcLightClientNextBlockResponse_and_RpcLightClientNextBlockError(
-        json,
-      );
-  final dynamic json;
-  dynamic toJson() => json;
-}
-
-/// Union type generated from `JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError`.
-///
-/// Holds the raw decoded JSON; inspect [json] for the
-/// active variant (NEAR serializes these tagged).
-class JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError {
-  const JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError(
-    this.json,
-  );
-  factory JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError.fromJson(
-    dynamic json,
-  ) =>
-      JsonRpcResponse_for_RpcLightClientStateProofResponse_and_RpcLightClientProofError(
         json,
       );
   final dynamic json;
@@ -7138,8 +6892,8 @@ class RpcChunkResponse {
         transactions: json[r'transactions'] == null
             ? null
             : (json[r'transactions'] as List)
-                  .map<SignedTransactionView>(
-                    (e) => SignedTransactionView.fromJson(e),
+                  .map<TransactionEnvelopeView>(
+                    (e) => TransactionEnvelopeView.fromJson(e),
                   )
                   .toList(),
       );
@@ -7147,7 +6901,7 @@ class RpcChunkResponse {
   final AccountId? author;
   final ChunkHeaderView? header;
   final List<ReceiptView>? receipts;
-  final List<SignedTransactionView>? transactions;
+  final List<TransactionEnvelopeView>? transactions;
 
   Map<String, dynamic> toJson() => {
     if (author != null) r'author': author,
@@ -7938,93 +7692,6 @@ class RpcLightClientBlockProofResponse {
   };
 }
 
-/// Generated from `RpcLightClientChunkExecutionProofRequest`.
-class RpcLightClientChunkExecutionProofRequest {
-  const RpcLightClientChunkExecutionProofRequest({
-    this.chunk_id,
-    this.light_client_head,
-  });
-
-  factory RpcLightClientChunkExecutionProofRequest.fromJson(
-    Map<String, dynamic> json,
-  ) => RpcLightClientChunkExecutionProofRequest(
-    chunk_id: json[r'chunk_id'] == null
-        ? null
-        : SpiceChunkId.fromJson(json[r'chunk_id']),
-    light_client_head: json[r'light_client_head'] == null
-        ? null
-        : json[r'light_client_head'] as CryptoHash,
-  );
-
-  final SpiceChunkId? chunk_id;
-  final CryptoHash? light_client_head;
-
-  Map<String, dynamic> toJson() => {
-    if (chunk_id != null) r'chunk_id': chunk_id?.toJson(),
-    if (light_client_head != null) r'light_client_head': light_client_head,
-  };
-}
-
-/// Generated from `RpcLightClientChunkExecutionProofResponse`.
-class RpcLightClientChunkExecutionProofResponse {
-  const RpcLightClientChunkExecutionProofResponse({this.chunk_execution_proof});
-
-  factory RpcLightClientChunkExecutionProofResponse.fromJson(
-    Map<String, dynamic> json,
-  ) => RpcLightClientChunkExecutionProofResponse(
-    chunk_execution_proof: json[r'chunk_execution_proof'] == null
-        ? null
-        : ChunkExecutionProofView.fromJson(json[r'chunk_execution_proof']),
-  );
-
-  final ChunkExecutionProofView? chunk_execution_proof;
-
-  Map<String, dynamic> toJson() => {
-    if (chunk_execution_proof != null)
-      r'chunk_execution_proof': chunk_execution_proof?.toJson(),
-  };
-}
-
-/// Union type generated from `RpcLightClientExecutionOutcomeProofRequest`.
-///
-/// Holds the raw decoded JSON; inspect [json] for the
-/// active variant (NEAR serializes these tagged).
-class RpcLightClientExecutionOutcomeProofRequest {
-  const RpcLightClientExecutionOutcomeProofRequest(this.json);
-  factory RpcLightClientExecutionOutcomeProofRequest.fromJson(dynamic json) =>
-      RpcLightClientExecutionOutcomeProofRequest(json);
-  final dynamic json;
-  dynamic toJson() => json;
-}
-
-/// Generated from `RpcLightClientExecutionOutcomeProofResponse`.
-class RpcLightClientExecutionOutcomeProofResponse {
-  const RpcLightClientExecutionOutcomeProofResponse({
-    this.chunk_execution_proof,
-    this.outcome_proof,
-  });
-
-  factory RpcLightClientExecutionOutcomeProofResponse.fromJson(
-    Map<String, dynamic> json,
-  ) => RpcLightClientExecutionOutcomeProofResponse(
-    chunk_execution_proof: json[r'chunk_execution_proof'] == null
-        ? null
-        : ChunkExecutionProofView.fromJson(json[r'chunk_execution_proof']),
-    outcome_proof: json[r'outcome_proof'] == null
-        ? null
-        : ExecutionOutcomeWithIdView.fromJson(json[r'outcome_proof']),
-  );
-
-  final ChunkExecutionProofView? chunk_execution_proof;
-  final ExecutionOutcomeWithIdView? outcome_proof;
-
-  Map<String, dynamic> toJson() => {
-    if (chunk_execution_proof != null)
-      r'chunk_execution_proof': chunk_execution_proof?.toJson(),
-    if (outcome_proof != null) r'outcome_proof': outcome_proof?.toJson(),
-  };
-}
-
 /// Union type generated from `RpcLightClientExecutionProofRequest`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -8184,66 +7851,6 @@ class RpcLightClientProofError {
       RpcLightClientProofError(json);
   final dynamic json;
   dynamic toJson() => json;
-}
-
-/// Generated from `RpcLightClientStateProofRequest`.
-class RpcLightClientStateProofRequest {
-  const RpcLightClientStateProofRequest({
-    this.chunk_id,
-    this.light_client_head,
-    this.target,
-  });
-
-  factory RpcLightClientStateProofRequest.fromJson(Map<String, dynamic> json) =>
-      RpcLightClientStateProofRequest(
-        chunk_id: json[r'chunk_id'] == null
-            ? null
-            : SpiceChunkId.fromJson(json[r'chunk_id']),
-        light_client_head: json[r'light_client_head'] == null
-            ? null
-            : json[r'light_client_head'] as CryptoHash,
-        target: json[r'target'] == null
-            ? null
-            : StateProofTarget.fromJson(json[r'target']),
-      );
-
-  final SpiceChunkId? chunk_id;
-  final CryptoHash? light_client_head;
-  final StateProofTarget? target;
-
-  Map<String, dynamic> toJson() => {
-    if (chunk_id != null) r'chunk_id': chunk_id?.toJson(),
-    if (light_client_head != null) r'light_client_head': light_client_head,
-    if (target != null) r'target': target?.toJson(),
-  };
-}
-
-/// Generated from `RpcLightClientStateProofResponse`.
-class RpcLightClientStateProofResponse {
-  const RpcLightClientStateProofResponse({
-    this.chunk_execution_proof,
-    this.state_proof,
-  });
-
-  factory RpcLightClientStateProofResponse.fromJson(
-    Map<String, dynamic> json,
-  ) => RpcLightClientStateProofResponse(
-    chunk_execution_proof: json[r'chunk_execution_proof'] == null
-        ? null
-        : ChunkExecutionProofView.fromJson(json[r'chunk_execution_proof']),
-    state_proof: json[r'state_proof'] == null
-        ? null
-        : StateProofView.fromJson(json[r'state_proof']),
-  );
-
-  final ChunkExecutionProofView? chunk_execution_proof;
-  final StateProofView? state_proof;
-
-  Map<String, dynamic> toJson() => {
-    if (chunk_execution_proof != null)
-      r'chunk_execution_proof': chunk_execution_proof?.toJson(),
-    if (state_proof != null) r'state_proof': state_proof?.toJson(),
-  };
 }
 
 /// Union type generated from `RpcMaintenanceWindowsError`.
@@ -10249,37 +9856,6 @@ class StateItem {
   };
 }
 
-/// Union type generated from `StateProofTarget`.
-///
-/// Holds the raw decoded JSON; inspect [json] for the
-/// active variant (NEAR serializes these tagged).
-class StateProofTarget {
-  const StateProofTarget(this.json);
-  factory StateProofTarget.fromJson(dynamic json) => StateProofTarget(json);
-  final dynamic json;
-  dynamic toJson() => json;
-}
-
-/// Generated from `StateProofView`.
-class StateProofView {
-  const StateProofView({this.nodes, this.value});
-
-  factory StateProofView.fromJson(Map<String, dynamic> json) => StateProofView(
-    nodes: json[r'nodes'] == null
-        ? null
-        : (json[r'nodes'] as List).map<String>((e) => e as String).toList(),
-    value: json[r'value'] == null ? null : json[r'value'],
-  );
-
-  final List<String>? nodes;
-  final dynamic? value;
-
-  Map<String, dynamic> toJson() => {
-    if (nodes != null) r'nodes': nodes,
-    if (value != null) r'value': value,
-  };
-}
-
 /// Generated from `StateSyncConfig`.
 class StateSyncConfig {
   const StateSyncConfig({
@@ -10543,6 +10119,18 @@ class TrackedShardsConfig {
   const TrackedShardsConfig(this.json);
   factory TrackedShardsConfig.fromJson(dynamic json) =>
       TrackedShardsConfig(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Union type generated from `TransactionEnvelopeView`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class TransactionEnvelopeView {
+  const TransactionEnvelopeView(this.json);
+  factory TransactionEnvelopeView.fromJson(dynamic json) =>
+      TransactionEnvelopeView(json);
   final dynamic json;
   dynamic toJson() => json;
 }
