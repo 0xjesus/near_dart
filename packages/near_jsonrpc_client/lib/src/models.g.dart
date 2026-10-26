@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.36
+// Source: nearcore OpenAPI 1.3.37
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -5971,6 +5971,7 @@ class LimitConfig {
     this.max_function_body_size,
     this.max_functions_number_per_contract,
     this.max_gas_burnt,
+    this.max_gas_burnt_external,
     this.max_globals_per_contract,
     this.max_instrumented_code_size,
     this.max_length_method_name,
@@ -6046,6 +6047,9 @@ class LimitConfig {
     max_gas_burnt: json[r'max_gas_burnt'] == null
         ? null
         : json[r'max_gas_burnt'] as NearGas,
+    max_gas_burnt_external: json[r'max_gas_burnt_external'] == null
+        ? null
+        : json[r'max_gas_burnt_external'] as NearGas,
     max_globals_per_contract: json[r'max_globals_per_contract'] == null
         ? null
         : (json[r'max_globals_per_contract'] as num).toInt(),
@@ -6163,6 +6167,7 @@ class LimitConfig {
   final int? max_function_body_size;
   final int? max_functions_number_per_contract;
   final NearGas? max_gas_burnt;
+  final NearGas? max_gas_burnt_external;
   final int? max_globals_per_contract;
   final int? max_instrumented_code_size;
   final int? max_length_method_name;
@@ -6219,6 +6224,8 @@ class LimitConfig {
     if (max_functions_number_per_contract != null)
       r'max_functions_number_per_contract': max_functions_number_per_contract,
     if (max_gas_burnt != null) r'max_gas_burnt': max_gas_burnt,
+    if (max_gas_burnt_external != null)
+      r'max_gas_burnt_external': max_gas_burnt_external,
     if (max_globals_per_contract != null)
       r'max_globals_per_contract': max_globals_per_contract,
     if (max_instrumented_code_size != null)
@@ -6998,7 +7005,6 @@ class RpcClientConfigResponse {
     this.transaction_pool_strict_nonce_ttl_blocks,
     this.transaction_request_handler_threads,
     this.trie_viewer_state_size_limit,
-    this.ttl_account_id_router,
     this.tx_routing_height_horizon,
     this.version,
     this.view_access_keys_limit,
@@ -7241,11 +7247,6 @@ class RpcClientConfigResponse {
     trie_viewer_state_size_limit: json[r'trie_viewer_state_size_limit'] == null
         ? null
         : (json[r'trie_viewer_state_size_limit'] as num).toInt(),
-    ttl_account_id_router: json[r'ttl_account_id_router'] == null
-        ? null
-        : (json[r'ttl_account_id_router'] as List)
-              .map<int>((e) => (e as num).toInt())
-              .toList(),
     tx_routing_height_horizon: json[r'tx_routing_height_horizon'] == null
         ? null
         : (json[r'tx_routing_height_horizon'] as num).toInt(),
@@ -7327,7 +7328,6 @@ class RpcClientConfigResponse {
   final int? transaction_pool_strict_nonce_ttl_blocks;
   final int? transaction_request_handler_threads;
   final int? trie_viewer_state_size_limit;
-  final List<int>? ttl_account_id_router;
   final int? tx_routing_height_horizon;
   final Version? version;
   final int? view_access_keys_limit;
@@ -7454,8 +7454,6 @@ class RpcClientConfigResponse {
           transaction_request_handler_threads,
     if (trie_viewer_state_size_limit != null)
       r'trie_viewer_state_size_limit': trie_viewer_state_size_limit,
-    if (ttl_account_id_router != null)
-      r'ttl_account_id_router': ttl_account_id_router,
     if (tx_routing_height_horizon != null)
       r'tx_routing_height_horizon': tx_routing_height_horizon,
     if (version != null) r'version': version?.toJson(),
