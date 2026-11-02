@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.37
+// Source: nearcore OpenAPI 1.3.38
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -2576,8 +2576,6 @@ class ExtCostsConfigView {
     this.bls12381_p2_sum_element,
     this.bls12381_pairing_base,
     this.bls12381_pairing_element,
-    this.contract_compile_base,
-    this.contract_compile_bytes,
     this.contract_loading_base,
     this.contract_loading_bytes,
     this.ecrecover_base,
@@ -2735,12 +2733,6 @@ class ExtCostsConfigView {
     bls12381_pairing_element: json[r'bls12381_pairing_element'] == null
         ? null
         : json[r'bls12381_pairing_element'] as NearGas,
-    contract_compile_base: json[r'contract_compile_base'] == null
-        ? null
-        : json[r'contract_compile_base'] as NearGas,
-    contract_compile_bytes: json[r'contract_compile_bytes'] == null
-        ? null
-        : json[r'contract_compile_bytes'] as NearGas,
     contract_loading_base: json[r'contract_loading_base'] == null
         ? null
         : json[r'contract_loading_base'] as NearGas,
@@ -2992,8 +2984,6 @@ class ExtCostsConfigView {
   final NearGas? bls12381_p2_sum_element;
   final NearGas? bls12381_pairing_base;
   final NearGas? bls12381_pairing_element;
-  final NearGas? contract_compile_base;
-  final NearGas? contract_compile_bytes;
   final NearGas? contract_loading_base;
   final NearGas? contract_loading_bytes;
   final NearGas? ecrecover_base;
@@ -3118,10 +3108,6 @@ class ExtCostsConfigView {
       r'bls12381_pairing_base': bls12381_pairing_base,
     if (bls12381_pairing_element != null)
       r'bls12381_pairing_element': bls12381_pairing_element,
-    if (contract_compile_base != null)
-      r'contract_compile_base': contract_compile_base,
-    if (contract_compile_bytes != null)
-      r'contract_compile_bytes': contract_compile_bytes,
     if (contract_loading_base != null)
       r'contract_loading_base': contract_loading_base,
     if (contract_loading_bytes != null)
@@ -5959,7 +5945,6 @@ class LightClientBlockLiteView {
 /// Generated from `LimitConfig`.
 class LimitConfig {
   const LimitConfig({
-    this.account_id_validity_rules_version,
     this.initial_memory_pages,
     this.max_actions_per_receipt,
     this.max_arguments_length,
@@ -6007,10 +5992,6 @@ class LimitConfig {
   });
 
   factory LimitConfig.fromJson(Map<String, dynamic> json) => LimitConfig(
-    account_id_validity_rules_version:
-        json[r'account_id_validity_rules_version'] == null
-        ? null
-        : (json[r'account_id_validity_rules_version'] as num).toInt(),
     initial_memory_pages: json[r'initial_memory_pages'] == null
         ? null
         : (json[r'initial_memory_pages'] as num).toInt(),
@@ -6155,7 +6136,6 @@ class LimitConfig {
         : (json[r'yield_timeout_length_in_blocks'] as num).toInt(),
   );
 
-  final int? account_id_validity_rules_version;
   final int? initial_memory_pages;
   final int? max_actions_per_receipt;
   final int? max_arguments_length;
@@ -6202,8 +6182,6 @@ class LimitConfig {
   final int? yield_timeout_length_in_blocks;
 
   Map<String, dynamic> toJson() => {
-    if (account_id_validity_rules_version != null)
-      r'account_id_validity_rules_version': account_id_validity_rules_version,
     if (initial_memory_pages != null)
       r'initial_memory_pages': initial_memory_pages,
     if (max_actions_per_receipt != null)
@@ -9973,19 +9951,6 @@ class StorageError {
   dynamic toJson() => json;
 }
 
-/// Generated from `StorageGetMode`.
-enum StorageGetMode {
-  FlatStorage(r'FlatStorage'),
-  Trie(r'Trie');
-
-  const StorageGetMode(this.wireValue);
-  final String wireValue;
-
-  static StorageGetMode fromJson(dynamic json) =>
-      values.firstWhere((e) => e.wireValue == json);
-  String toJson() => wireValue;
-}
-
 /// Generated from `StorageUsageConfigView`.
 class StorageUsageConfigView {
   const StorageUsageConfigView({
@@ -10275,61 +10240,32 @@ class UseGlobalContractAction {
 class VMConfigView {
   const VMConfigView({
     this.bls12381_not_in_group_fix,
-    this.chain_id_host_fn,
-    this.discard_custom_sections,
-    this.eth_implicit_accounts,
     this.ext_costs,
     this.fix_contract_loading_cost,
-    this.gas_key_host_fns,
-    this.global_contract_host_fns,
     this.grow_mem_cost,
-    this.implicit_account_creation,
     this.limit_config,
     this.linear_op_base_cost,
     this.linear_op_unit_cost,
     this.ml_dsa_verify_host_fn,
-    this.one_yocto_on_promise,
-    this.p256_verify_host_fn,
-    this.reftypes_bulk_memory,
     this.regular_op_cost,
     this.sha3_host_fns,
-    this.storage_get_mode,
     this.universal_accounts,
     this.vm_kind,
-    this.yield_with_id_host_fns,
   });
 
   factory VMConfigView.fromJson(Map<String, dynamic> json) => VMConfigView(
     bls12381_not_in_group_fix: json[r'bls12381_not_in_group_fix'] == null
         ? null
         : json[r'bls12381_not_in_group_fix'] as bool,
-    chain_id_host_fn: json[r'chain_id_host_fn'] == null
-        ? null
-        : json[r'chain_id_host_fn'] as bool,
-    discard_custom_sections: json[r'discard_custom_sections'] == null
-        ? null
-        : json[r'discard_custom_sections'] as bool,
-    eth_implicit_accounts: json[r'eth_implicit_accounts'] == null
-        ? null
-        : json[r'eth_implicit_accounts'] as bool,
     ext_costs: json[r'ext_costs'] == null
         ? null
         : ExtCostsConfigView.fromJson(json[r'ext_costs']),
     fix_contract_loading_cost: json[r'fix_contract_loading_cost'] == null
         ? null
         : json[r'fix_contract_loading_cost'] as bool,
-    gas_key_host_fns: json[r'gas_key_host_fns'] == null
-        ? null
-        : json[r'gas_key_host_fns'] as bool,
-    global_contract_host_fns: json[r'global_contract_host_fns'] == null
-        ? null
-        : json[r'global_contract_host_fns'] as bool,
     grow_mem_cost: json[r'grow_mem_cost'] == null
         ? null
         : (json[r'grow_mem_cost'] as num).toInt(),
-    implicit_account_creation: json[r'implicit_account_creation'] == null
-        ? null
-        : json[r'implicit_account_creation'] as bool,
     limit_config: json[r'limit_config'] == null
         ? null
         : LimitConfig.fromJson(json[r'limit_config']),
@@ -10342,76 +10278,40 @@ class VMConfigView {
     ml_dsa_verify_host_fn: json[r'ml_dsa_verify_host_fn'] == null
         ? null
         : json[r'ml_dsa_verify_host_fn'] as bool,
-    one_yocto_on_promise: json[r'one_yocto_on_promise'] == null
-        ? null
-        : json[r'one_yocto_on_promise'] as bool,
-    p256_verify_host_fn: json[r'p256_verify_host_fn'] == null
-        ? null
-        : json[r'p256_verify_host_fn'] as bool,
-    reftypes_bulk_memory: json[r'reftypes_bulk_memory'] == null
-        ? null
-        : json[r'reftypes_bulk_memory'] as bool,
     regular_op_cost: json[r'regular_op_cost'] == null
         ? null
         : (json[r'regular_op_cost'] as num).toInt(),
     sha3_host_fns: json[r'sha3_host_fns'] == null
         ? null
         : json[r'sha3_host_fns'] as bool,
-    storage_get_mode: json[r'storage_get_mode'] == null
-        ? null
-        : StorageGetMode.fromJson(json[r'storage_get_mode']),
     universal_accounts: json[r'universal_accounts'] == null
         ? null
         : json[r'universal_accounts'] as bool,
     vm_kind: json[r'vm_kind'] == null
         ? null
         : VMKind.fromJson(json[r'vm_kind']),
-    yield_with_id_host_fns: json[r'yield_with_id_host_fns'] == null
-        ? null
-        : json[r'yield_with_id_host_fns'] as bool,
   );
 
   final bool? bls12381_not_in_group_fix;
-  final bool? chain_id_host_fn;
-  final bool? discard_custom_sections;
-  final bool? eth_implicit_accounts;
   final ExtCostsConfigView? ext_costs;
   final bool? fix_contract_loading_cost;
-  final bool? gas_key_host_fns;
-  final bool? global_contract_host_fns;
   final int? grow_mem_cost;
-  final bool? implicit_account_creation;
   final LimitConfig? limit_config;
   final int? linear_op_base_cost;
   final int? linear_op_unit_cost;
   final bool? ml_dsa_verify_host_fn;
-  final bool? one_yocto_on_promise;
-  final bool? p256_verify_host_fn;
-  final bool? reftypes_bulk_memory;
   final int? regular_op_cost;
   final bool? sha3_host_fns;
-  final StorageGetMode? storage_get_mode;
   final bool? universal_accounts;
   final VMKind? vm_kind;
-  final bool? yield_with_id_host_fns;
 
   Map<String, dynamic> toJson() => {
     if (bls12381_not_in_group_fix != null)
       r'bls12381_not_in_group_fix': bls12381_not_in_group_fix,
-    if (chain_id_host_fn != null) r'chain_id_host_fn': chain_id_host_fn,
-    if (discard_custom_sections != null)
-      r'discard_custom_sections': discard_custom_sections,
-    if (eth_implicit_accounts != null)
-      r'eth_implicit_accounts': eth_implicit_accounts,
     if (ext_costs != null) r'ext_costs': ext_costs?.toJson(),
     if (fix_contract_loading_cost != null)
       r'fix_contract_loading_cost': fix_contract_loading_cost,
-    if (gas_key_host_fns != null) r'gas_key_host_fns': gas_key_host_fns,
-    if (global_contract_host_fns != null)
-      r'global_contract_host_fns': global_contract_host_fns,
     if (grow_mem_cost != null) r'grow_mem_cost': grow_mem_cost,
-    if (implicit_account_creation != null)
-      r'implicit_account_creation': implicit_account_creation,
     if (limit_config != null) r'limit_config': limit_config?.toJson(),
     if (linear_op_base_cost != null)
       r'linear_op_base_cost': linear_op_base_cost,
@@ -10419,20 +10319,10 @@ class VMConfigView {
       r'linear_op_unit_cost': linear_op_unit_cost,
     if (ml_dsa_verify_host_fn != null)
       r'ml_dsa_verify_host_fn': ml_dsa_verify_host_fn,
-    if (one_yocto_on_promise != null)
-      r'one_yocto_on_promise': one_yocto_on_promise,
-    if (p256_verify_host_fn != null)
-      r'p256_verify_host_fn': p256_verify_host_fn,
-    if (reftypes_bulk_memory != null)
-      r'reftypes_bulk_memory': reftypes_bulk_memory,
     if (regular_op_cost != null) r'regular_op_cost': regular_op_cost,
     if (sha3_host_fns != null) r'sha3_host_fns': sha3_host_fns,
-    if (storage_get_mode != null)
-      r'storage_get_mode': storage_get_mode?.toJson(),
     if (universal_accounts != null) r'universal_accounts': universal_accounts,
     if (vm_kind != null) r'vm_kind': vm_kind?.toJson(),
-    if (yield_with_id_host_fns != null)
-      r'yield_with_id_host_fns': yield_with_id_host_fns,
   };
 }
 
