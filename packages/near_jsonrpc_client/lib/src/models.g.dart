@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.38
+// Source: nearcore OpenAPI 1.3.39
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -2043,6 +2043,9 @@ class DurationAsStdSchemaProvider {
     if (secs != null) r'secs': secs,
   };
 }
+
+/// Alias for `EccTransaction`.
+typedef EccTransaction = String;
 
 /// Generated from `EccTransactionView`.
 class EccTransactionView {
@@ -8408,22 +8411,29 @@ class RpcRequestValidationErrorKind {
 
 /// Generated from `RpcSendTransactionRequest`.
 class RpcSendTransactionRequest {
-  const RpcSendTransactionRequest({this.signed_tx_base64, this.wait_until});
+  const RpcSendTransactionRequest({
+    this.ecc_base64,
+    this.signed_tx_base64,
+    this.wait_until,
+  });
 
   factory RpcSendTransactionRequest.fromJson(Map<String, dynamic> json) =>
       RpcSendTransactionRequest(
+        ecc_base64: json[r'ecc_base64'] == null ? null : json[r'ecc_base64'],
         signed_tx_base64: json[r'signed_tx_base64'] == null
             ? null
-            : json[r'signed_tx_base64'] as SignedTransaction,
+            : json[r'signed_tx_base64'],
         wait_until: json[r'wait_until'] == null
             ? null
             : TxExecutionStatus.fromJson(json[r'wait_until']),
       );
 
-  final SignedTransaction? signed_tx_base64;
+  final dynamic? ecc_base64;
+  final dynamic? signed_tx_base64;
   final TxExecutionStatus? wait_until;
 
   Map<String, dynamic> toJson() => {
+    if (ecc_base64 != null) r'ecc_base64': ecc_base64,
     if (signed_tx_base64 != null) r'signed_tx_base64': signed_tx_base64,
     if (wait_until != null) r'wait_until': wait_until?.toJson(),
   };
