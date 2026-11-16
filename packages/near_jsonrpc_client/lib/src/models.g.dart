@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.39
+// Source: nearcore OpenAPI 1.3.41
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names, constant_identifier_names, prefer_const_constructors
@@ -519,6 +519,18 @@ class AddKeyAction {
     if (access_key != null) r'access_key': access_key?.toJson(),
     if (public_key != null) r'public_key': public_key,
   };
+}
+
+/// Union type generated from `AuthorizationContext`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class AuthorizationContext {
+  const AuthorizationContext(this.json);
+  factory AuthorizationContext.fromJson(dynamic json) =>
+      AuthorizationContext(json);
+  final dynamic json;
+  dynamic toJson() => json;
 }
 
 /// Generated from `BandwidthRequest`.
@@ -1111,6 +1123,42 @@ class ChunkDistributionUris {
   };
 }
 
+/// Generated from `ChunkEccTransactionView`.
+class ChunkEccTransactionView {
+  const ChunkEccTransactionView({
+    this.contract_id,
+    this.payload,
+    this.state_init,
+    this.transaction_id,
+  });
+
+  factory ChunkEccTransactionView.fromJson(Map<String, dynamic> json) =>
+      ChunkEccTransactionView(
+        contract_id: json[r'contract_id'] == null
+            ? null
+            : json[r'contract_id'] as AccountId,
+        payload: json[r'payload'] == null ? null : json[r'payload'] as String,
+        state_init: json[r'state_init'] == null
+            ? null
+            : json[r'state_init'] as String,
+        transaction_id: json[r'transaction_id'] == null
+            ? null
+            : json[r'transaction_id'],
+      );
+
+  final AccountId? contract_id;
+  final String? payload;
+  final String? state_init;
+  final dynamic? transaction_id;
+
+  Map<String, dynamic> toJson() => {
+    if (contract_id != null) r'contract_id': contract_id,
+    if (payload != null) r'payload': payload,
+    if (state_init != null) r'state_init': state_init,
+    if (transaction_id != null) r'transaction_id': transaction_id,
+  };
+}
+
 /// Alias for `ChunkHash`.
 typedef ChunkHash = CryptoHash;
 
@@ -1254,6 +1302,18 @@ class ChunkHeaderView {
           .toList(),
     if (validator_reward != null) r'validator_reward': validator_reward,
   };
+}
+
+/// Union type generated from `ChunkTransactionView`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class ChunkTransactionView {
+  const ChunkTransactionView(this.json);
+  factory ChunkTransactionView.fromJson(dynamic json) =>
+      ChunkTransactionView(json);
+  final dynamic json;
+  dynamic toJson() => json;
 }
 
 /// Generated from `CloudArchivalWriterConfig`.
@@ -2049,25 +2109,37 @@ typedef EccTransaction = String;
 
 /// Generated from `EccTransactionView`.
 class EccTransactionView {
-  const EccTransactionView({this.contract_id, this.hash, this.payload});
+  const EccTransactionView({
+    this.contract_id,
+    this.payload,
+    this.state_init,
+    this.transaction_id,
+  });
 
   factory EccTransactionView.fromJson(Map<String, dynamic> json) =>
       EccTransactionView(
         contract_id: json[r'contract_id'] == null
             ? null
             : json[r'contract_id'] as AccountId,
-        hash: json[r'hash'] == null ? null : json[r'hash'] as CryptoHash,
         payload: json[r'payload'] == null ? null : json[r'payload'] as String,
+        state_init: json[r'state_init'] == null
+            ? null
+            : json[r'state_init'] as String,
+        transaction_id: json[r'transaction_id'] == null
+            ? null
+            : json[r'transaction_id'] as CryptoHash,
       );
 
   final AccountId? contract_id;
-  final CryptoHash? hash;
   final String? payload;
+  final String? state_init;
+  final CryptoHash? transaction_id;
 
   Map<String, dynamic> toJson() => {
     if (contract_id != null) r'contract_id': contract_id,
-    if (hash != null) r'hash': hash,
     if (payload != null) r'payload': payload,
+    if (state_init != null) r'state_init': state_init,
+    if (transaction_id != null) r'transaction_id': transaction_id,
   };
 }
 
@@ -3224,6 +3296,80 @@ class ExtCostsConfigView {
   };
 }
 
+/// Union type generated from `ExternalCallChunkLimit`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class ExternalCallChunkLimit {
+  const ExternalCallChunkLimit(this.json);
+  factory ExternalCallChunkLimit.fromJson(dynamic json) =>
+      ExternalCallChunkLimit(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Generated from `ExternalCallsConfigView`.
+class ExternalCallsConfigView {
+  const ExternalCallsConfigView({
+    this.chunk_compute_share,
+    this.chunk_storage_proof_share,
+    this.chunk_transactions_size_share,
+    this.max_call_recorded_size,
+    this.max_call_size,
+    this.max_calls_per_chunk,
+  });
+
+  factory ExternalCallsConfigView.fromJson(Map<String, dynamic> json) =>
+      ExternalCallsConfigView(
+        chunk_compute_share: json[r'chunk_compute_share'] == null
+            ? null
+            : (json[r'chunk_compute_share'] as List)
+                  .map<int>((e) => (e as num).toInt())
+                  .toList(),
+        chunk_storage_proof_share: json[r'chunk_storage_proof_share'] == null
+            ? null
+            : (json[r'chunk_storage_proof_share'] as List)
+                  .map<int>((e) => (e as num).toInt())
+                  .toList(),
+        chunk_transactions_size_share:
+            json[r'chunk_transactions_size_share'] == null
+            ? null
+            : (json[r'chunk_transactions_size_share'] as List)
+                  .map<int>((e) => (e as num).toInt())
+                  .toList(),
+        max_call_recorded_size: json[r'max_call_recorded_size'] == null
+            ? null
+            : (json[r'max_call_recorded_size'] as num).toInt(),
+        max_call_size: json[r'max_call_size'] == null
+            ? null
+            : (json[r'max_call_size'] as num).toInt(),
+        max_calls_per_chunk: json[r'max_calls_per_chunk'] == null
+            ? null
+            : (json[r'max_calls_per_chunk'] as num).toInt(),
+      );
+
+  final List<int>? chunk_compute_share;
+  final List<int>? chunk_storage_proof_share;
+  final List<int>? chunk_transactions_size_share;
+  final int? max_call_recorded_size;
+  final int? max_call_size;
+  final int? max_calls_per_chunk;
+
+  Map<String, dynamic> toJson() => {
+    if (chunk_compute_share != null)
+      r'chunk_compute_share': chunk_compute_share,
+    if (chunk_storage_proof_share != null)
+      r'chunk_storage_proof_share': chunk_storage_proof_share,
+    if (chunk_transactions_size_share != null)
+      r'chunk_transactions_size_share': chunk_transactions_size_share,
+    if (max_call_recorded_size != null)
+      r'max_call_recorded_size': max_call_recorded_size,
+    if (max_call_size != null) r'max_call_size': max_call_size,
+    if (max_calls_per_chunk != null)
+      r'max_calls_per_chunk': max_calls_per_chunk,
+  };
+}
+
 /// Union type generated from `ExternalStorageLocation`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -3284,7 +3430,7 @@ class FinalExecutionOutcomeView {
             : FinalExecutionStatus.fromJson(json[r'status']),
         transaction: json[r'transaction'] == null
             ? null
-            : SignedTransactionView.fromJson(json[r'transaction']),
+            : TransactionEnvelopeView.fromJson(json[r'transaction']),
         transaction_outcome: json[r'transaction_outcome'] == null
             ? null
             : ExecutionOutcomeWithIdView.fromJson(json[r'transaction_outcome']),
@@ -3292,7 +3438,7 @@ class FinalExecutionOutcomeView {
 
   final List<ExecutionOutcomeWithIdView>? receipts_outcome;
   final FinalExecutionStatus? status;
-  final SignedTransactionView? transaction;
+  final TransactionEnvelopeView? transaction;
   final ExecutionOutcomeWithIdView? transaction_outcome;
 
   Map<String, dynamic> toJson() => {
@@ -3335,7 +3481,7 @@ class FinalExecutionOutcomeWithReceiptView {
         : FinalExecutionStatus.fromJson(json[r'status']),
     transaction: json[r'transaction'] == null
         ? null
-        : SignedTransactionView.fromJson(json[r'transaction']),
+        : TransactionEnvelopeView.fromJson(json[r'transaction']),
     transaction_outcome: json[r'transaction_outcome'] == null
         ? null
         : ExecutionOutcomeWithIdView.fromJson(json[r'transaction_outcome']),
@@ -3344,7 +3490,7 @@ class FinalExecutionOutcomeWithReceiptView {
   final List<ReceiptView>? receipts;
   final List<ExecutionOutcomeWithIdView>? receipts_outcome;
   final FinalExecutionStatus? status;
-  final SignedTransactionView? transaction;
+  final TransactionEnvelopeView? transaction;
   final ExecutionOutcomeWithIdView? transaction_outcome;
 
   Map<String, dynamic> toJson() => {
@@ -4046,11 +4192,11 @@ class IndexerTransactionWithOutcome {
               ),
         transaction: json[r'transaction'] == null
             ? null
-            : SignedTransactionView.fromJson(json[r'transaction']),
+            : TransactionEnvelopeView.fromJson(json[r'transaction']),
       );
 
   final IndexerExecutionOutcomeWithOptionalReceipt? outcome;
-  final SignedTransactionView? transaction;
+  final TransactionEnvelopeView? transaction;
 
   Map<String, dynamic> toJson() => {
     if (outcome != null) r'outcome': outcome?.toJson(),
@@ -5435,19 +5581,6 @@ class JsonRpcResponse_for_Array_of_ValidatorStakeView_and_RpcValidatorError {
   dynamic toJson() => json;
 }
 
-/// Union type generated from `JsonRpcResponse_for_CryptoHash_and_RpcTransactionError`.
-///
-/// Holds the raw decoded JSON; inspect [json] for the
-/// active variant (NEAR serializes these tagged).
-class JsonRpcResponse_for_CryptoHash_and_RpcTransactionError {
-  const JsonRpcResponse_for_CryptoHash_and_RpcTransactionError(this.json);
-  factory JsonRpcResponse_for_CryptoHash_and_RpcTransactionError.fromJson(
-    dynamic json,
-  ) => JsonRpcResponse_for_CryptoHash_and_RpcTransactionError(json);
-  final dynamic json;
-  dynamic toJson() => json;
-}
-
 /// Union type generated from `JsonRpcResponse_for_GenesisConfig_and_GenesisConfigError`.
 ///
 /// Holds the raw decoded JSON; inspect [json] for the
@@ -5457,6 +5590,21 @@ class JsonRpcResponse_for_GenesisConfig_and_GenesisConfigError {
   factory JsonRpcResponse_for_GenesisConfig_and_GenesisConfigError.fromJson(
     dynamic json,
   ) => JsonRpcResponse_for_GenesisConfig_and_GenesisConfigError(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Union type generated from `JsonRpcResponse_for_Nullable_CryptoHash_and_RpcTransactionError`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class JsonRpcResponse_for_Nullable_CryptoHash_and_RpcTransactionError {
+  const JsonRpcResponse_for_Nullable_CryptoHash_and_RpcTransactionError(
+    this.json,
+  );
+  factory JsonRpcResponse_for_Nullable_CryptoHash_and_RpcTransactionError.fromJson(
+    dynamic json,
+  ) => JsonRpcResponse_for_Nullable_CryptoHash_and_RpcTransactionError(json);
   final dynamic json;
   dynamic toJson() => json;
 }
@@ -5960,6 +6108,8 @@ class LimitConfig {
     this.max_functions_number_per_contract,
     this.max_gas_burnt,
     this.max_gas_burnt_external,
+    this.max_gas_key_nonces_added_per_receipt,
+    this.max_gas_key_nonces_removed_per_receipt,
     this.max_globals_per_contract,
     this.max_instrumented_code_size,
     this.max_length_method_name,
@@ -6034,6 +6184,14 @@ class LimitConfig {
     max_gas_burnt_external: json[r'max_gas_burnt_external'] == null
         ? null
         : json[r'max_gas_burnt_external'] as NearGas,
+    max_gas_key_nonces_added_per_receipt:
+        json[r'max_gas_key_nonces_added_per_receipt'] == null
+        ? null
+        : (json[r'max_gas_key_nonces_added_per_receipt'] as num).toInt(),
+    max_gas_key_nonces_removed_per_receipt:
+        json[r'max_gas_key_nonces_removed_per_receipt'] == null
+        ? null
+        : (json[r'max_gas_key_nonces_removed_per_receipt'] as num).toInt(),
     max_globals_per_contract: json[r'max_globals_per_contract'] == null
         ? null
         : (json[r'max_globals_per_contract'] as num).toInt(),
@@ -6151,6 +6309,8 @@ class LimitConfig {
   final int? max_functions_number_per_contract;
   final NearGas? max_gas_burnt;
   final NearGas? max_gas_burnt_external;
+  final int? max_gas_key_nonces_added_per_receipt;
+  final int? max_gas_key_nonces_removed_per_receipt;
   final int? max_globals_per_contract;
   final int? max_instrumented_code_size;
   final int? max_length_method_name;
@@ -6207,6 +6367,12 @@ class LimitConfig {
     if (max_gas_burnt != null) r'max_gas_burnt': max_gas_burnt,
     if (max_gas_burnt_external != null)
       r'max_gas_burnt_external': max_gas_burnt_external,
+    if (max_gas_key_nonces_added_per_receipt != null)
+      r'max_gas_key_nonces_added_per_receipt':
+          max_gas_key_nonces_added_per_receipt,
+    if (max_gas_key_nonces_removed_per_receipt != null)
+      r'max_gas_key_nonces_removed_per_receipt':
+          max_gas_key_nonces_removed_per_receipt,
     if (max_globals_per_contract != null)
       r'max_globals_per_contract': max_globals_per_contract,
     if (max_instrumented_code_size != null)
@@ -6880,8 +7046,8 @@ class RpcChunkResponse {
         transactions: json[r'transactions'] == null
             ? null
             : (json[r'transactions'] as List)
-                  .map<TransactionEnvelopeView>(
-                    (e) => TransactionEnvelopeView.fromJson(e),
+                  .map<ChunkTransactionView>(
+                    (e) => ChunkTransactionView.fromJson(e),
                   )
                   .toList(),
       );
@@ -6889,7 +7055,7 @@ class RpcChunkResponse {
   final AccountId? author;
   final ChunkHeaderView? header;
   final List<ReceiptView>? receipts;
-  final List<TransactionEnvelopeView>? transactions;
+  final List<ChunkTransactionView>? transactions;
 
   Map<String, dynamic> toJson() => {
     if (author != null) r'author': author,
@@ -6934,6 +7100,8 @@ class RpcClientConfigResponse {
     this.cloud_archival_writer,
     this.disable_tx_routing,
     this.doomslug_step_period,
+    this.ecc_pool_size_share,
+    this.ecc_time_share,
     this.enable_early_prepare_transactions,
     this.enable_multiline_logging,
     this.enable_statistics_export,
@@ -7044,6 +7212,14 @@ class RpcClientConfigResponse {
     doomslug_step_period: json[r'doomslug_step_period'] == null
         ? null
         : json[r'doomslug_step_period'] as MutableConfigValue,
+    ecc_pool_size_share: json[r'ecc_pool_size_share'] == null
+        ? null
+        : (json[r'ecc_pool_size_share'] as List)
+              .map<int>((e) => (e as num).toInt())
+              .toList(),
+    ecc_time_share: json[r'ecc_time_share'] == null
+        ? null
+        : json[r'ecc_time_share'] as MutableConfigValue,
     enable_early_prepare_transactions:
         json[r'enable_early_prepare_transactions'] == null
         ? null
@@ -7257,6 +7433,8 @@ class RpcClientConfigResponse {
   final dynamic? cloud_archival_writer;
   final bool? disable_tx_routing;
   final MutableConfigValue? doomslug_step_period;
+  final List<int>? ecc_pool_size_share;
+  final MutableConfigValue? ecc_time_share;
   final bool? enable_early_prepare_transactions;
   final bool? enable_multiline_logging;
   final bool? enable_statistics_export;
@@ -7342,6 +7520,9 @@ class RpcClientConfigResponse {
     if (disable_tx_routing != null) r'disable_tx_routing': disable_tx_routing,
     if (doomslug_step_period != null)
       r'doomslug_step_period': doomslug_step_period,
+    if (ecc_pool_size_share != null)
+      r'ecc_pool_size_share': ecc_pool_size_share,
+    if (ecc_time_share != null) r'ecc_time_share': ecc_time_share,
     if (enable_early_prepare_transactions != null)
       r'enable_early_prepare_transactions': enable_early_prepare_transactions,
     if (enable_multiline_logging != null)
@@ -8412,14 +8593,16 @@ class RpcRequestValidationErrorKind {
 /// Generated from `RpcSendTransactionRequest`.
 class RpcSendTransactionRequest {
   const RpcSendTransactionRequest({
-    this.ecc_base64,
+    this.external_call_base64,
     this.signed_tx_base64,
     this.wait_until,
   });
 
   factory RpcSendTransactionRequest.fromJson(Map<String, dynamic> json) =>
       RpcSendTransactionRequest(
-        ecc_base64: json[r'ecc_base64'] == null ? null : json[r'ecc_base64'],
+        external_call_base64: json[r'external_call_base64'] == null
+            ? null
+            : json[r'external_call_base64'],
         signed_tx_base64: json[r'signed_tx_base64'] == null
             ? null
             : json[r'signed_tx_base64'],
@@ -8428,12 +8611,13 @@ class RpcSendTransactionRequest {
             : TxExecutionStatus.fromJson(json[r'wait_until']),
       );
 
-  final dynamic? ecc_base64;
+  final dynamic? external_call_base64;
   final dynamic? signed_tx_base64;
   final TxExecutionStatus? wait_until;
 
   Map<String, dynamic> toJson() => {
-    if (ecc_base64 != null) r'ecc_base64': ecc_base64,
+    if (external_call_base64 != null)
+      r'external_call_base64': external_call_base64,
     if (signed_tx_base64 != null) r'signed_tx_base64': signed_tx_base64,
     if (wait_until != null) r'wait_until': wait_until?.toJson(),
   };
@@ -9234,6 +9418,7 @@ class RuntimeConfigView {
     this.account_creation_charge,
     this.account_creation_config,
     this.congestion_control_config,
+    this.external_calls_config,
     this.min_gas_purchase_price,
     this.storage_amount_per_byte,
     this.transaction_costs,
@@ -9256,6 +9441,9 @@ class RuntimeConfigView {
             : CongestionControlConfigView.fromJson(
                 json[r'congestion_control_config'],
               ),
+        external_calls_config: json[r'external_calls_config'] == null
+            ? null
+            : ExternalCallsConfigView.fromJson(json[r'external_calls_config']),
         min_gas_purchase_price: json[r'min_gas_purchase_price'] == null
             ? null
             : json[r'min_gas_purchase_price'] as NearToken,
@@ -9276,6 +9464,7 @@ class RuntimeConfigView {
   final NearToken? account_creation_charge;
   final AccountCreationConfigView? account_creation_config;
   final CongestionControlConfigView? congestion_control_config;
+  final ExternalCallsConfigView? external_calls_config;
   final NearToken? min_gas_purchase_price;
   final NearToken? storage_amount_per_byte;
   final RuntimeFeesConfigView? transaction_costs;
@@ -9289,6 +9478,8 @@ class RuntimeConfigView {
       r'account_creation_config': account_creation_config?.toJson(),
     if (congestion_control_config != null)
       r'congestion_control_config': congestion_control_config?.toJson(),
+    if (external_calls_config != null)
+      r'external_calls_config': external_calls_config?.toJson(),
     if (min_gas_purchase_price != null)
       r'min_gas_purchase_price': min_gas_purchase_price,
     if (storage_amount_per_byte != null)
@@ -9820,6 +10011,17 @@ class StateChangeWithCauseView {
   const StateChangeWithCauseView(this.json);
   factory StateChangeWithCauseView.fromJson(dynamic json) =>
       StateChangeWithCauseView(json);
+  final dynamic json;
+  dynamic toJson() => json;
+}
+
+/// Union type generated from `StateInitView`.
+///
+/// Holds the raw decoded JSON; inspect [json] for the
+/// active variant (NEAR serializes these tagged).
+class StateInitView {
+  const StateInitView(this.json);
+  factory StateInitView.fromJson(dynamic json) => StateInitView(json);
   final dynamic json;
   dynamic toJson() => json;
 }

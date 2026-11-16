@@ -1,5 +1,5 @@
 // GENERATED CODE — DO NOT EDIT BY HAND.
-// Source: nearcore OpenAPI 1.3.39
+// Source: nearcore OpenAPI 1.3.41
 // Regenerate: dart run tool/generate.dart
 //
 // ignore_for_file: non_constant_identifier_names
@@ -22,7 +22,7 @@ class NearJsonRpcClient {
     : _http = httpClient ?? http.Client();
 
   /// nearcore OpenAPI spec version this client was generated from.
-  static const specVersion = '1.3.39';
+  static const specVersion = '1.3.41';
   final String endpoint;
   final http.Client _http;
   var _id = 0;
@@ -252,9 +252,9 @@ class NearJsonRpcClient {
   }
 
   /// Calls the `broadcast_tx_async` JSON-RPC method.
-  Future<CryptoHash> broadcastTxAsync(RpcSendTransactionRequest params) async {
+  Future<dynamic> broadcastTxAsync(RpcSendTransactionRequest params) async {
     final result = await _call(r'broadcast_tx_async', params.toJson());
-    return result as CryptoHash;
+    return result;
   }
 
   /// Calls the `broadcast_tx_commit` JSON-RPC method.
